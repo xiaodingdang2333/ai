@@ -1,0 +1,35 @@
+# Python / local environments
+.venv/
+.venv-*/
+__pycache__/
+*.py[cod]
+
+# Large bundled runtimes and app folders
+SoNovel/
+runtime/
+
+# Claude / temporary outputs
+tmp/
+*.output
+.DS_Store
+Thumbs.db
+
+# Secrets and local config
+.env
+.env.*
+*.key
+*apikey*
+*api_key*
+credentials*.json
+secrets*.json
+
+# Generated images can be large; remove this block if you want covers in Git
+*.png
+*.jpg
+*.jpeg
+*.webp
+
+# Archives / exported packages
+*.zip
+*.rar
+*.7z
