@@ -10,6 +10,9 @@ runtime/
 
 # Claude / temporary outputs
 tmp/
+tmp*/
+.claude/
+output/fanqie-upload/
 *.output
 .DS_Store
 Thumbs.db
@@ -22,4 +25,3 @@ Thumbs.db
 *api_key*
 credentials*.json
 secrets*.json
-
