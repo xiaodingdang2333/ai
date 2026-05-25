@@ -1,0 +1,3 @@
+display_name: 番茄小说上传
+short_description: 从本地 txt 小说目录快速创建番茄草稿并发布。
+default_prompt: 把指定小说目录下的正文章节上传到番茄小说，章节号用三位数字，不足补 0；发布时选择仅基础检测，AI 使用选择是。

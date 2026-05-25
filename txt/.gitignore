@@ -13,6 +13,7 @@ tmp/
 tmp*/
 .claude/
 output/fanqie-upload/
+.fanqie-chrome-profile/
 *.output
 .DS_Store
 Thumbs.db
