@@ -1,0 +1,8 @@
+interface:
+  display_name: "Android APK Builder"
+  short_description: "Build APKs with matching previews"
+  brand_color: "#0B63CE"
+  default_prompt: "Use $android-apk-builder to build an Android app with a browser preview that matches the installed APK, then package it with GitHub Actions."
+
+policy:
+  allow_implicit_invocation: true
