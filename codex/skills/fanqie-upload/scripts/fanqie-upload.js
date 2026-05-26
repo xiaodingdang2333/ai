@@ -199,6 +199,10 @@ async function createDraft(client, chapter) {
   if (!inserted.ok || inserted.chars < Math.min(500, chapter.bodyChars)) {
     throw new Error(`Body insert failed: ${JSON.stringify(inserted)}`);
   }
+  await waitFor(Runtime, `([...document.querySelectorAll('button,[role="button"],a')]
+    .some(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
+      && !el.disabled
+      && ((el.innerText || el.textContent || '').trim()).includes('${U.saveDraft}')))`, 30000, 'save draft button');
   if (!await clickText(Runtime, Input, U.saveDraft, { wait: 2500 })) throw new Error('Save draft button not found');
   await waitFor(Runtime, `document.body.innerText.includes('${U.saved}')`, 30000, 'saved status');
 }
@@ -268,7 +272,23 @@ async function draftLinks(Runtime) {
 async function publishOne(client, href, chapter) {
   const { Runtime, Input, Page } = client;
   await navigate(Page, href);
-  if (!await clickText(Runtime, Input, U.next, { wait: 2500 })) throw new Error(`Cannot click next for ${fullChapterTitle(chapter)}`);
+  await waitFor(Runtime, `([...document.querySelectorAll('button,[role="button"],a')]
+    .some(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
+      && !el.disabled
+      && String(el.className).includes('publish-button')
+      && ((el.innerText || el.textContent || '').trim()).includes('${U.next}')))`, 30000, 'next button');
+  const nextClicked = await evalv(Runtime, `(() => {
+    const el = [...document.querySelectorAll('button,[role="button"],a')]
+      .find(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
+        && !el.disabled
+        && String(el.className).includes('publish-button')
+        && ((el.innerText || el.textContent || '').trim()).includes('${U.next}'));
+    if (!el) return false;
+    el.click();
+    return true;
+  })()`);
+  if (!nextClicked && !await clickText(Runtime, Input, U.next, { wait: 2500 })) throw new Error(`Cannot click next for ${fullChapterTitle(chapter)}`);
+  await sleep(2500);
   for (let i = 0; i < 20; i++) {
     if (await hasText(Runtime, U.basic) || await hasText(Runtime, U.confirmPublish)) break;
     await clickText(Runtime, Input, U.submit, { wait: 2000 });
