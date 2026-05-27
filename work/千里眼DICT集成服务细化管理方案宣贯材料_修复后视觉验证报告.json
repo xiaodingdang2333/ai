@@ -1,0 +1,59 @@
+{
+  "pages": 9,
+  "comparisons": [
+    {
+      "page": 1,
+      "mean_diff": 1.0137085619570188,
+      "max_diff": 161,
+      "pct_pixels_gt8": 2.167181069958848
+    },
+    {
+      "page": 2,
+      "mean_diff": 5.655755315500685,
+      "max_diff": 220,
+      "pct_pixels_gt8": 15.674296982167352
+    },
+    {
+      "page": 3,
+      "mean_diff": 4.953734853680841,
+      "max_diff": 195,
+      "pct_pixels_gt8": 13.917009602194788
+    },
+    {
+      "page": 4,
+      "mean_diff": 5.083315614997713,
+      "max_diff": 204,
+      "pct_pixels_gt8": 13.73062414266118
+    },
+    {
+      "page": 5,
+      "mean_diff": 5.332296239140375,
+      "max_diff": 215,
+      "pct_pixels_gt8": 14.416066529492454
+    },
+    {
+      "page": 6,
+      "mean_diff": 1.8830829903978052,
+      "max_diff": 223,
+      "pct_pixels_gt8": 5.320044581618656
+    },
+    {
+      "page": 7,
+      "mean_diff": 3.3753466506630088,
+      "max_diff": 194,
+      "pct_pixels_gt8": 8.264917695473251
+    },
+    {
+      "page": 8,
+      "mean_diff": 2.889288122999543,
+      "max_diff": 200,
+      "pct_pixels_gt8": 6.8605109739369
+    },
+    {
+      "page": 9,
+      "mean_diff": 2.275190614997714,
+      "max_diff": 198,
+      "pct_pixels_gt8": 5.090449245541838
+    }
+  ]
+}

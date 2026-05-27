@@ -1,0 +1,16 @@
+{
+  "build_counts": {
+    "pages": 9,
+    "backgrounds": 9,
+    "editable_text_lines": 336,
+    "editable_images": 36,
+    "editable_shapes": 263,
+    "editable_lines": 2
+  },
+  "package_inspection": {
+    "slide_xml_count": 9,
+    "visible_background_objects": 9,
+    "transparent_alpha_markers": 1653,
+    "editable_named_objects": 637
+  }
+}
