@@ -1,0 +1,3 @@
+display_name: Video Chord Sheet
+short_description: Turn chord-labeled videos into accurate lyric chord sheets with exported images.
+default_prompt: Create a guitar chord sheet from the provided video or screenshots. Preserve visible chord fingerings, separate any intro chords before lyrics, format provided lyrics with chords, and export the result as an image when requested.

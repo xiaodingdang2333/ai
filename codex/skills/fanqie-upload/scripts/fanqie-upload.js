@@ -106,6 +106,11 @@ async function connect(port) {
   const target = targets.find(item => item.type === 'page' && item.url.includes('fanqienovel.com')) || targets.find(item => item.type === 'page');
   if (!target) throw new Error(`No Chrome page found on CDP port ${port}`);
   const client = await CDP({ port, target });
+  client.Page.javascriptDialogOpening(async () => {
+    try {
+      await client.Page.handleJavaScriptDialog({ accept: true });
+    } catch (_) {}
+  });
   await client.Runtime.enable();
   await client.Page.enable();
   return client;
