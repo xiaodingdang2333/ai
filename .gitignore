@@ -1,2 +1,13 @@
 __pycache__/
 *.pyc
+node_modules/
+txt/node_modules/
+txt/output/fanqie-cdp-profile/
+.claude/*.lock
+tmp/
+**/__pycache__/
+*.log
+txt/output/imagegen/
+
+/.npm-cache
+/doraemon-hongyadong-bike
