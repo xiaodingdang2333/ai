@@ -116,3 +116,15 @@ Do not commit `gen_avatar.py` unless it no longer contains secrets and you inten
 - Avoid template-like AI prose. Existing checks used banned phrases such as `仿佛`, `一丝`, `一抹`, `缓缓`, `轻轻`, `淡淡`, `眼中闪过`, `嘴角勾起`, and summary endings like `这一刻`.
 - Prefer concrete scene evidence over explanation: physical artifacts, injuries, public witnesses, rules being read aloud, and visible backlash.
 - Do not rewrite locked existing chapters unless explicitly asked; continue from tracking files and latest chapter.
+
+## Shared memory mirror
+
+- Cross-tool shared memory lives at `F:\ai\memory`; if available, read `F:\ai\memory\README.md` first, then the relevant small files it points to.
+- When the user says “记住”, “以后都这样”, “总结经验”, or gives a durable correction/preference, update `F:\ai\memory` and also mirror the durable change into both `F:\ai\txt\CLAUDE.md` and `F:\ai\txt\GEMINI.md`.
+- Do not mirror per-novel concrete details such as pen names, character facts, plot state, or chapter-specific information into shared memory; keep those inside the corresponding novel project folder.
+- Current stable preferences: communicate in Chinese by default; be concise and action-oriented; inspect relevant files before editing; keep changes scoped; never overwrite user work unless explicitly asked; run focused verification when feasible.
+- Novel writing defaults: female-oriented commercial fiction should avoid formulaic copycat names/plots, avoid流水式对话, avoid one-sentence-per-paragraph pacing, use more细腻描写, strong hooks, concrete evidence, bodily cost, rules, public reversals, and visible consequences.
+- Novel chapters: unless the user says otherwise, formal new/revised chapters should be at least 2500 Chinese characters.
+- Template phrases such as `仿佛`, `一丝`, `一抹`, `缓缓`, `轻轻`, `淡淡`, `眼中闪过`, `嘴角勾起`, `这一刻` are not absolutely forbidden, but should be sparse and natural rather than dense default prose.
+- Chapter titles: avoid overly functional/cliche title keywords such as “病历” or “婚约” when possible; prefer fresher, more atmospheric titles with story-specific imagery.
+- Multi-party novel scenes: add three-sided reactions, body language, setting pressure, inner reactions, and varied paragraph lengths instead of relying on流水式对话.

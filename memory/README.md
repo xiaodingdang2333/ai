@@ -17,6 +17,8 @@ Use `sessions/` only when the user asks to continue or recover a specific past c
 ## Update Rules
 
 - Store durable preferences, repeated corrections, project facts, and reusable workflows.
+- When updating shared memory, also mirror the durable update into `F:\ai\txt\CLAUDE.md` and `F:\ai\txt\GEMINI.md` so Claude/Gemini can recover the same long-term preferences from those files alone.
+- Do not store per-novel concrete details such as pen names, character facts, plot state, or chapter-specific information in shared memory; keep those in the corresponding novel project folder (`作品信息_番茄上传.md`, `设定/`, `大纲/`, `追踪/`).
 - Keep entries short and dated when useful.
 - Do not store secrets, API keys, passwords, tokens, private IDs, or sensitive personal data unless the user explicitly asks.
 - Prefer updating an existing bullet over adding duplicates.
