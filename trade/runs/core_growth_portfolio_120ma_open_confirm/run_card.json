@@ -1,0 +1,95 @@
+{
+  "artifacts": [
+    {
+      "path": "artifacts/equity.csv",
+      "sha256": "ed3823da7e74e5667c8f18e35c87cd628072b6bdcb56fc2e7c89434d66340ce5",
+      "size_bytes": 139074
+    },
+    {
+      "path": "artifacts/metrics.csv",
+      "sha256": "1c2b9e1b40f1c1b1069e3a5df8955737b0698288d936880a709e409ba6df5461",
+      "size_bytes": 398
+    },
+    {
+      "path": "artifacts/ohlcv_000333.SZ.csv",
+      "sha256": "461bdee3d685ba514f45260db56ee47cb2daecc09a93e511785f2d4b14e0ff39",
+      "size_bytes": 142428
+    },
+    {
+      "path": "artifacts/ohlcv_600900.SH.csv",
+      "sha256": "80c246a9331c1044c3c18509f348fbb0c43da0209e9b8cee14d79cf742e774c2",
+      "size_bytes": 146282
+    },
+    {
+      "path": "artifacts/ohlcv_600941.SH.csv",
+      "sha256": "c498ca26c96553f69880dc48653d29a432ca9eed93b7b1c8c345710d624f7daa",
+      "size_bytes": 115599
+    },
+    {
+      "path": "artifacts/ohlcv_601138.SH.csv",
+      "sha256": "efbcefecfb994cfcaa1fc24f97886dc0815c1939a075ee6492d54b12dfad7f3c",
+      "size_bytes": 145342
+    },
+    {
+      "path": "artifacts/positions.csv",
+      "sha256": "0c71998659b9d9ec2f082ff89e31045f815c2a109705df5df120664209641c10",
+      "size_bytes": 38618
+    },
+    {
+      "path": "artifacts/trades.csv",
+      "sha256": "dfeedb98a784be124300c03a68f8605143e9978576da12326b3fc0f153025bb1",
+      "size_bytes": 2985
+    },
+    {
+      "path": "code/signal_engine.py",
+      "sha256": "31fe67ea057042803d6e5d09a37b4ff232dfa71cafba0782c3de214268731ff8",
+      "size_bytes": 891
+    },
+    {
+      "path": "config.json",
+      "sha256": "d43167948dd2a1fb4da55727f1832b512bff645385898902d33d4e02fb2e9228",
+      "size_bytes": 299
+    }
+  ],
+  "backtest": {
+    "codes": [
+      "600941.SH",
+      "600900.SH",
+      "000333.SZ",
+      "601138.SH"
+    ],
+    "end_date": "2026-06-02",
+    "initial_cash": 100000,
+    "interval": "1D",
+    "start_date": "2021-01-01"
+  },
+  "data_sources": [
+    "yfinance-cache"
+  ],
+  "generated_at": "2026-06-02T09:18:05.772077Z",
+  "metrics": {
+    "annual_return": 0.10892605324964055,
+    "avg_holding_days": 109.6,
+    "benchmark_return": 1.664242,
+    "calmar": 0.9207,
+    "excess_return": -0.953266,
+    "final_value": 171097.62982192484,
+    "information_ratio": -0.7838,
+    "max_consecutive_loss": 3,
+    "max_drawdown": -0.1183086115435122,
+    "profit_factor": 5.9773,
+    "profit_loss_ratio": 4.2695,
+    "sharpe": 0.9028353667281259,
+    "sortino": 1.2191,
+    "total_return": 0.7109762982192485,
+    "trade_count": 24,
+    "win_rate": 0.5833333333333334
+  },
+  "reproducibility": {
+    "config_hash": "d43167948dd2a1fb4da55727f1832b512bff645385898902d33d4e02fb2e9228",
+    "strategy_hash": "31fe67ea057042803d6e5d09a37b4ff232dfa71cafba0782c3de214268731ff8"
+  },
+  "run_dir": "D:\\ai\\trade\\runs\\core_growth_portfolio_120ma_open_confirm",
+  "schema_version": "0.1",
+  "warnings": []
+}

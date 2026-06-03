@@ -35,6 +35,7 @@ A strong lead should:
 - Keep pacing brisk and avoid padding.
 - Give characters a clear growth path and emotional credibility.
 - Write in accessible, fluent, conversational Chinese with clean paragraphing.
+- If the answer is split into numbered sections, leave two blank lines before and two blank lines after each numbered heading.
 
 ## Topic, Theme, And Selling Point
 
@@ -78,4 +79,3 @@ Before considering a draft ready:
 5. Is there a fresh treatment of a familiar element?
 6. Does each major section contain a hook, reveal, conflict escalation, or reversal?
 7. Does the ending resolve the central danger and leave a meaningful aftertaste?
-

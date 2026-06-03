@@ -1,0 +1,79 @@
+{
+  "artifacts": [
+    {
+      "path": "artifacts/equity.csv",
+      "sha256": "c6548215525467bcdcb769230d94b8a87990cac2cf4ad9d8efd75d4774b7aab8",
+      "size_bytes": 239966
+    },
+    {
+      "path": "artifacts/metrics.csv",
+      "sha256": "34cc43a4c70404f158369d60011a815d51a855d82afcb6fa2e7bacb2fe753927",
+      "size_bytes": 394
+    },
+    {
+      "path": "artifacts/ohlcv_603000.SH.csv",
+      "sha256": "3559c505e0eb521fdfb790488bf9c6da46eea05fa43a83809caefc6c661ee387",
+      "size_bytes": 101193
+    },
+    {
+      "path": "artifacts/positions.csv",
+      "sha256": "bd2de32abc0f7a1a02dcaae5cf3cd9d2cf65db885831efd83bc9d04db48bd6c6",
+      "size_bytes": 39372
+    },
+    {
+      "path": "artifacts/trades.csv",
+      "sha256": "69466ed6510fd48c4e6ac3ded5ef9664b8bb8279e5c72b35b512dea853736c7f",
+      "size_bytes": 4642
+    },
+    {
+      "path": "code/signal_engine.py",
+      "sha256": "58741b40493ec085f9ef702b45ad785ec2566dd56983d6a5a083e28712ae6f65",
+      "size_bytes": 1001
+    },
+    {
+      "path": "config.json",
+      "sha256": "9b0b737a3aa6353b6228a8b24178ebdd22c1c897c4a250a419eb985b8a465e7e",
+      "size_bytes": 424
+    }
+  ],
+  "backtest": {
+    "codes": [
+      "603000.SH"
+    ],
+    "end_date": "2026-06-02",
+    "engine": "daily",
+    "initial_cash": 100000,
+    "interval": "1D",
+    "source": "auto",
+    "start_date": "2016-06-02"
+  },
+  "data_sources": [
+    "akshare-cache"
+  ],
+  "generated_at": "2026-06-02T07:11:35.305675Z",
+  "metrics": {
+    "annual_return": 0.08350239343050281,
+    "avg_holding_days": 14.1,
+    "benchmark_return": 0.093575,
+    "calmar": 0.4549,
+    "excess_return": 1.070672,
+    "final_value": 216424.6150889253,
+    "information_ratio": -0.1023,
+    "max_consecutive_loss": 8,
+    "max_drawdown": -0.1835794194033008,
+    "profit_factor": 2.5375,
+    "profit_loss_ratio": 4.3501,
+    "sharpe": 0.7502499083417292,
+    "sortino": 0.6011,
+    "total_return": 1.164246150889253,
+    "trade_count": 38,
+    "win_rate": 0.3684210526315789
+  },
+  "reproducibility": {
+    "config_hash": "9b0b737a3aa6353b6228a8b24178ebdd22c1c897c4a250a419eb985b8a465e7e",
+    "strategy_hash": "58741b40493ec085f9ef702b45ad785ec2566dd56983d6a5a083e28712ae6f65"
+  },
+  "run_dir": "D:\\ai\\trade\\runs\\renminwang_breakout_20_10_stop8_w33",
+  "schema_version": "0.1",
+  "warnings": []
+}
