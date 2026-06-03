@@ -88,3 +88,6 @@ When writing new chapters, create or verify the matching `大纲/细纲_第XXX�
 
 - There is also a work-task memory file at `F:\ai\work\工作记忆.md`, mainly for professional/PPT/PDF/workflow tasks.
 - For work資料、PPT、PDF、职场任务, read `F:\ai\work\工作记忆.md` if available.
+- Python environment: use `C:\Users\Administrator\.local\bin\python.exe` (uv-managed Python 3.12.13). Do not reinstall Python merely because `WindowsApps\python.exe` is also present.
+- Voice design: this Windows machine has an AMD Radeon RX 6750 GRE. Use the installed `voice-design` skill with the official OmniVoice Hugging Face Space; do not attempt a local OmniVoice model install.
+- Fanqie upload automation: if the browser asks “离开此网站”, choose “离开”; if the editor asks whether to keep editing a newly updated draft, choose “继续编辑”. Verify the final draft list once and avoid repeatedly switching pages.

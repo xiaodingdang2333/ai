@@ -128,3 +128,6 @@ Do not commit `gen_avatar.py` unless it no longer contains secrets and you inten
 - Template phrases such as `仿佛`, `一丝`, `一抹`, `缓缓`, `轻轻`, `淡淡`, `眼中闪过`, `嘴角勾起`, `这一刻` are not absolutely forbidden, but should be sparse and natural rather than dense default prose.
 - Chapter titles: avoid overly functional/cliche title keywords such as “病历” or “婚约” when possible; prefer fresher, more atmospheric titles with story-specific imagery.
 - Multi-party novel scenes: add three-sided reactions, body language, setting pressure, inner reactions, and varied paragraph lengths instead of relying on流水式对话.
+- Python environment: use `C:\Users\Administrator\.local\bin\python.exe` (uv-managed Python 3.12.13). Do not reinstall Python merely because `WindowsApps\python.exe` is also present.
+- Voice design: this Windows machine has an AMD Radeon RX 6750 GRE. Use the installed `voice-design` skill with the official OmniVoice Hugging Face Space; do not attempt a local OmniVoice model install.
+- Fanqie upload automation: if the browser asks “离开此网站”, choose “离开”; if the editor asks whether to keep editing a newly updated draft, choose “继续编辑”. Verify the final draft list once and avoid repeatedly switching pages.

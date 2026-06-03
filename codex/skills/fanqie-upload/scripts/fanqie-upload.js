@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 
 function loadCdp() {
   try {
@@ -22,6 +23,7 @@ const U = {
   basic: '\\u4ec5\\u57fa\\u7840\\u68c0\\u6d4b',
   yes: '\\u662f',
   confirmPublish: '\\u786e\\u8ba4\\u53d1\\u5e03',
+  continueEditing: '\\u7ee7\\u7eed\\u7f16\\u8f91',
   dailyLimit: '\\u63d0\\u4ea4\\u5b57\\u6570\\u8d85\\u51fa\\u6bcf\\u65e5\\u4e0a\\u9650',
   published: '\\u5df2\\u53d1\\u5e03',
   auditing: '\\u5ba1\\u6838\\u4e2d'
@@ -121,9 +123,47 @@ async function evalv(Runtime, expression) {
   return result.result.value;
 }
 
+async function acceptLeaveDialog(Page) {
+  try {
+    await Page.handleJavaScriptDialog({ accept: true });
+    return true;
+  } catch (_) {
+    if (process.platform !== 'win32') return false;
+    try {
+      const script = [
+        'Add-Type -AssemblyName UIAutomationClient',
+        '$root=[System.Windows.Automation.AutomationElement]::RootElement',
+        '$name=[string]([char]0x79bb)+[char]0x5f00',
+        '$cond=[System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty,$name)',
+        '$el=$root.FindFirst([System.Windows.Automation.TreeScope]::Descendants,$cond)',
+        'if($el){$el.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke();"CLICKED"}'
+      ].join(';');
+      return execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 2500
+      }).includes('CLICKED');
+    } catch (_) {
+      return false;
+    }
+  }
+}
+
 async function navigate(Page, url, waitMs = 4500) {
-  await Page.navigate({ url });
-  await sleep(waitMs);
+  let active = true;
+  const dialogGuard = (async () => {
+    while (active) {
+      await acceptLeaveDialog(Page);
+      await sleep(900);
+    }
+  })();
+  try {
+    await Page.navigate({ url });
+    await sleep(waitMs);
+  } finally {
+    active = false;
+    await dialogGuard;
+  }
 }
 
 async function hasText(Runtime, escaped) {
@@ -174,6 +214,7 @@ async function getVisibleChapterState(Runtime) {
 
 async function createDraft(client, chapter) {
   const { Runtime, Input } = client;
+  await clickText(Runtime, Input, U.continueEditing, { wait: 1000 });
   await waitFor(Runtime, `!!document.querySelector('.ProseMirror,[contenteditable="true"]')`, 30000, 'chapter editor');
   const rects = await evalv(Runtime, `(() => [...document.querySelectorAll('input,textarea')]
     .filter(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length))
@@ -185,6 +226,19 @@ async function createDraft(client, chapter) {
   if (!rects || rects.length < 2) throw new Error('Cannot locate chapter number/title inputs');
   await replaceAt(Input, rects[0], chapter.padded);
   await replaceAt(Input, rects[1], chapter.shortTitle);
+  await evalv(Runtime, `(() => {
+    const inputs = [...document.querySelectorAll('input,textarea')]
+      .filter(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length))
+      .slice(0, 2);
+    const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    set.call(inputs[0], ${JSON.stringify(chapter.padded)});
+    inputs[0].dispatchEvent(new Event('input', { bubbles: true }));
+    inputs[0].dispatchEvent(new Event('change', { bubbles: true }));
+    set.call(inputs[1], ${JSON.stringify(chapter.shortTitle)});
+    inputs[1].dispatchEvent(new Event('input', { bubbles: true }));
+    inputs[1].dispatchEvent(new Event('change', { bubbles: true }));
+    inputs[1].blur();
+  })()`);
   const values = await evalv(Runtime, `(() => [...document.querySelectorAll('input,textarea')]
     .filter(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length))
     .slice(0, 2)
@@ -238,21 +292,23 @@ async function commandDrafts(bookDir, bookId, chapters, port) {
   const client = await connect(port);
   const { Runtime, Page } = client;
   try {
+    await navigate(Page, draftBoxUrl(bookId, bookDir, 2));
+    let existingText = await getVisibleChapterState(Runtime);
+    await navigate(Page, draftBoxUrl(bookId, bookDir, 1));
+    existingText += '\n' + await getVisibleChapterState(Runtime);
+    await navigate(Page, draftBoxUrl(bookId, bookDir, 2));
     for (const chapter of chapters) {
       const expected = fullChapterTitle(chapter);
-      await navigate(Page, draftBoxUrl(bookId, bookDir, 2));
-      const draftText = await getVisibleChapterState(Runtime);
-      await navigate(Page, draftBoxUrl(bookId, bookDir, 1));
-      const publishedText = await getVisibleChapterState(Runtime);
-      if (draftText.includes(expected) || publishedText.includes(expected)) {
+      if (existingText.includes(expected)) {
         console.log(`SKIP ${expected}`);
         continue;
       }
-      await navigate(Page, draftBoxUrl(bookId, bookDir, 2));
       const href = await waitFor(Runtime, `[...document.querySelectorAll('a')].find(a => (a.innerText || a.textContent || '').trim().includes('${U.newDraft}'))?.href`, 15000, 'new draft link');
       await navigate(Page, href);
       await createDraft(client, chapter);
       console.log(`DRAFT ${expected}`);
+      existingText += `\n${expected}`;
+      await navigate(Page, draftBoxUrl(bookId, bookDir, 2));
     }
   } finally {
     await client.close();
@@ -277,6 +333,7 @@ async function draftLinks(Runtime) {
 async function publishOne(client, href, chapter) {
   const { Runtime, Input, Page } = client;
   await navigate(Page, href);
+  await clickText(Runtime, Input, U.continueEditing, { wait: 1000 });
   await waitFor(Runtime, `([...document.querySelectorAll('button,[role="button"],a')]
     .some(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
       && !el.disabled
