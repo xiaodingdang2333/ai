@@ -18,6 +18,7 @@ import org.json.*;
 
 public class MainActivity extends Activity {
     static final int BLUE = Color.rgb(37, 99, 235), INK = Color.rgb(24, 24, 27), PAPER = Color.rgb(255, 253, 248);
+    static final int MUTED = Color.rgb(82, 82, 91), LINE = Color.rgb(238, 242, 247), SOFT = Color.rgb(246, 250, 255);
     static final int PDF_REQ = 10, IMG_REQ = 11;
     LinearLayout root, content, nav;
     ArrayList<Track> tracks = new ArrayList<>();
@@ -31,6 +32,9 @@ public class MainActivity extends Activity {
 
     public void onCreate(Bundle b) {
         super.onCreate(b);
+        getWindow().setStatusBarColor(PAPER);
+        getWindow().setNavigationBarColor(Color.WHITE);
+        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         loadState();
         if (setlists.isEmpty()) Collections.addAll(setlists, "周六婚礼演出", "练习清单", "古典独奏");
         if (tags.isEmpty()) Collections.addAll(tags, "钢琴", "婚礼", "练习中", "待练");
@@ -40,15 +44,26 @@ public class MainActivity extends Activity {
 
     void showShell(String title) {
         root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setBackgroundColor(PAPER);
+        root.setOnApplyWindowInsetsListener((v, insets) -> {
+            Insets bars = insets.getInsets(WindowInsets.Type.systemBars());
+            root.setPadding(0, bars.top, 0, 0);
+            nav.setPadding(dp(10), dp(8), dp(10), dp(10) + bars.bottom);
+            return insets;
+        });
         LinearLayout top = new LinearLayout(this); top.setPadding(dp(18), dp(14), dp(18), dp(8)); top.setGravity(Gravity.CENTER_VERTICAL);
-        TextView t = text(title, 24, true); top.addView(t, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView mark = text("♪", 20, true); mark.setGravity(Gravity.CENTER); mark.setTextColor(Color.WHITE); mark.setBackground(round(BLUE, dp(16))); top.addView(mark, new LinearLayout.LayoutParams(dp(36), dp(36)));
+        LinearLayout titles = col(); titles.setPadding(dp(12), 0, 0, 0);
+        TextView t = text(title, 23, true); titles.addView(t);
+        TextView sub = text(title.equals("乐谱库") ? "管理 PDF 乐谱、标签和曲单" : "乐谱助手", 12, false); sub.setTextColor(MUTED); titles.addView(sub);
+        top.addView(titles, new LinearLayout.LayoutParams(0, -2, 1));
         root.addView(top);
-        content = new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL); content.setPadding(dp(16), dp(8), dp(16), dp(8));
+        content = new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL); content.setPadding(dp(16), dp(10), dp(16), dp(8));
         root.addView(content, new LinearLayout.LayoutParams(-1, 0, 1));
-        nav = new LinearLayout(this); nav.setPadding(dp(10), dp(8), dp(10), dp(12)); nav.setGravity(Gravity.CENTER); nav.setBackgroundColor(Color.WHITE);
+        nav = new LinearLayout(this); nav.setPadding(dp(10), dp(8), dp(10), dp(12)); nav.setGravity(Gravity.CENTER); nav.setBackgroundColor(Color.WHITE); nav.setElevation(dp(10));
         addNav("乐谱库", v -> showLibrary()); addNav("Setlist", v -> showSetlist()); addNav("标签", v -> showTags()); addNav("设置", v -> showSettings());
         root.addView(nav);
         setContentView(root);
+        root.requestApplyInsets();
     }
 
     void addNav(String s, View.OnClickListener l) {
@@ -59,13 +74,13 @@ public class MainActivity extends Activity {
 
     void showLibrary() {
         reset("乐谱库");
-        EditText search = input("搜索曲目、作曲家、标签"); content.addView(search);
+        EditText search = input("搜索曲目、作曲家、标签"); content.addView(search, new LinearLayout.LayoutParams(-1, dp(54)));
         LinearLayout actions = row(); actions.addView(button("导入PDF", v -> pickPdf()), new LinearLayout.LayoutParams(0, dp(48), 1));
         actions.addView(space(10, 1)); actions.addView(button("照片生成PDF", v -> pickImages()), new LinearLayout.LayoutParams(0, dp(48), 1));
         content.addView(actions);
         ScrollView sv = new ScrollView(this); LinearLayout list = col(); sv.addView(list); content.addView(sv, new LinearLayout.LayoutParams(-1, 0, 1));
         if (tracks.isEmpty()) {
-            TextView empty = text("还没有乐谱\n点击“导入PDF”或“照片生成PDF”开始。", 18, false); empty.setGravity(Gravity.CENTER); list.addView(empty, new LinearLayout.LayoutParams(-1, dp(260)));
+            TextView empty = text("还没有乐谱\n点击“导入PDF”或“照片生成PDF”开始。", 18, false); empty.setGravity(Gravity.CENTER); empty.setTextColor(MUTED); list.addView(empty, new LinearLayout.LayoutParams(-1, dp(260)));
         } else {
             for (Track tr : tracks) list.addView(trackRow(tr));
         }
@@ -73,8 +88,8 @@ public class MainActivity extends Activity {
 
     View trackRow(Track tr) {
         LinearLayout card = card(); card.setOnClickListener(v -> openTrack(tr));
-        TextView title = text(tr.title, 18, true); card.addView(title);
-        card.addView(text((tr.author.isEmpty() ? "未知作者" : tr.author) + " · " + tr.pages + "页", 13, false));
+        TextView title = text(tr.title, 19, true); title.setSingleLine(false); card.addView(title);
+        TextView meta = text((tr.author.isEmpty() ? "未知作者" : tr.author) + " · " + tr.pages + "页", 13, false); meta.setTextColor(MUTED); card.addView(meta);
         LinearLayout chips = row(); for (String tag : tr.tags) chips.addView(chip(tag)); card.addView(chips);
         LinearLayout ops = row(); ops.setGravity(Gravity.RIGHT);
         ops.addView(small("标签", v -> editTrackTags(tr))); ops.addView(small("加入Setlist", v -> addToSetlist(tr)));
@@ -268,17 +283,18 @@ public class MainActivity extends Activity {
         new AlertDialog.Builder(this).setTitle("加入Setlist").setItems(arr, (d, w) -> { t.setlist = arr[w]; saveState(); toast("已加入：" + arr[w]); }).show();
     }
 
-    TextView text(String s, int sp, boolean bold) { TextView v = new TextView(this); v.setText(s); v.setTextSize(sp); v.setTextColor(INK); v.setPadding(0, dp(4), 0, dp(4)); if (bold) v.setTypeface(Typeface.DEFAULT_BOLD); return v; }
-    TextView pill(String s, boolean active) { TextView v = text(s, 14, active); v.setGravity(Gravity.CENTER); v.setBackground(round(active ? BLUE : Color.TRANSPARENT, dp(18))); v.setTextColor(active ? Color.WHITE : Color.rgb(82,82,91)); return v; }
+    TextView text(String s, int sp, boolean bold) { TextView v = new TextView(this); v.setText(s); v.setTextSize(sp); v.setTextColor(INK); v.setIncludeFontPadding(true); v.setPadding(0, dp(3), 0, dp(3)); if (bold) v.setTypeface(Typeface.DEFAULT_BOLD); return v; }
+    TextView pill(String s, boolean active) { TextView v = text(s, 14, active); v.setGravity(Gravity.CENTER); v.setBackground(round(active ? Color.rgb(239,246,255) : Color.TRANSPARENT, dp(18))); v.setTextColor(active ? BLUE : MUTED); return v; }
     TextView chip(String s) { TextView v = text(s, 12, false); v.setTextColor(BLUE); v.setPadding(dp(10), dp(5), dp(10), dp(5)); v.setBackground(round(Color.rgb(239,246,255), dp(14))); return v; }
     TextView small(String s, View.OnClickListener l) { TextView v = chip(s); v.setOnClickListener(l); return v; }
-    Button button(String s, View.OnClickListener l) { Button b = new Button(this); b.setText(s); b.setTextColor(Color.WHITE); b.setBackground(round(BLUE, dp(12))); b.setOnClickListener(l); return b; }
-    EditText input(String hint) { EditText e = new EditText(this); e.setHint(hint); e.setSingleLine(true); e.setBackground(round(Color.WHITE, dp(14))); e.setPadding(dp(14), 0, dp(14), 0); return e; }
+    Button button(String s, View.OnClickListener l) { Button b = new Button(this); b.setText(s); b.setAllCaps(false); b.setTextSize(15); b.setTextColor(Color.WHITE); b.setBackground(round(BLUE, dp(14))); b.setElevation(dp(2)); b.setOnClickListener(l); return b; }
+    EditText input(String hint) { EditText e = new EditText(this); e.setHint(hint); e.setSingleLine(true); e.setTextSize(16); e.setBackground(roundStroke(Color.WHITE, dp(16), LINE, 1)); e.setPadding(dp(16), 0, dp(16), 0); return e; }
     LinearLayout row() { LinearLayout l = new LinearLayout(this); l.setOrientation(LinearLayout.HORIZONTAL); l.setGravity(Gravity.CENTER_VERTICAL); l.setPadding(0, dp(6), 0, dp(6)); return l; }
     LinearLayout col() { LinearLayout l = new LinearLayout(this); l.setOrientation(LinearLayout.VERTICAL); return l; }
-    LinearLayout card() { LinearLayout l = col(); l.setPadding(dp(16), dp(14), dp(16), dp(14)); l.setBackground(round(Color.WHITE, dp(16))); LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2); lp.setMargins(0, 0, 0, dp(10)); l.setLayoutParams(lp); return l; }
+    LinearLayout card() { LinearLayout l = col(); l.setPadding(dp(18), dp(16), dp(18), dp(16)); l.setBackground(roundStroke(Color.WHITE, dp(18), Color.rgb(245, 247, 251), 1)); l.setElevation(dp(2)); LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2); lp.setMargins(0, 0, 0, dp(12)); l.setLayoutParams(lp); return l; }
     Space space(int w, int h) { Space s = new Space(this); s.setLayoutParams(new LinearLayout.LayoutParams(dp(w), dp(h))); return s; }
     android.graphics.drawable.GradientDrawable round(int color, int r) { android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable(); g.setColor(color); g.setCornerRadius(r); return g; }
+    android.graphics.drawable.GradientDrawable roundStroke(int color, int r, int strokeColor, int sw) { android.graphics.drawable.GradientDrawable g = round(color, r); g.setStroke(dp(sw), strokeColor); return g; }
     int dp(int v) { return (int)(v * getResources().getDisplayMetrics().density + .5f); }
     void toast(String s) { Toast.makeText(this, s, Toast.LENGTH_SHORT).show(); }
 
