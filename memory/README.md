@@ -11,6 +11,7 @@ At the start of every new AI conversation/session, read this file first.
 3. Read `project-context.md` when the request touches local paths, recurring projects, or repository conventions.
 4. Read `lessons.md` when the task may benefit from past operational lessons.
 5. Read `decisions.md` when long-term choices or defaults matter.
+6. Read `qimao-submission-rules.md` when the user asks to write, revise, package, or evaluate a novel for 七猫投稿/七猫内投.
 
 Use `sessions/` only when the user asks to continue or recover a specific past conversation.
 

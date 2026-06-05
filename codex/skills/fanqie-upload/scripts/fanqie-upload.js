@@ -33,6 +33,7 @@ function usage() {
   console.log(`Usage:
   node fanqie-upload.js scan --book <book-dir-or-name> [--root F:\\ai\\txt] [--from N] [--to N]
   node fanqie-upload.js drafts --book <book-dir-or-name> --book-id <id> [--port 9223] [--from N] [--to N]
+  node fanqie-upload.js repair --book <book-dir-or-name> --book-id <id> [--port 9223] [--from N] [--to N]
   node fanqie-upload.js publish --book <book-dir-or-name> --book-id <id> [--port 9223] [--from N] [--to N]
   node fanqie-upload.js all --book <book-dir-or-name> --book-id <id> [--port 9223] [--from N] [--to N]
 `);
@@ -212,10 +213,7 @@ async function getVisibleChapterState(Runtime) {
   return text;
 }
 
-async function createDraft(client, chapter) {
-  const { Runtime, Input } = client;
-  await clickText(Runtime, Input, U.continueEditing, { wait: 1000 });
-  await waitFor(Runtime, `!!document.querySelector('.ProseMirror,[contenteditable="true"]')`, 30000, 'chapter editor');
+async function fillChapterMeta(Runtime, Input, chapter) {
   const rects = await evalv(Runtime, `(() => [...document.querySelectorAll('input,textarea')]
     .filter(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length))
     .slice(0, 2)
@@ -246,18 +244,45 @@ async function createDraft(client, chapter) {
   if (values[0] !== chapter.padded || values[1] !== chapter.shortTitle) {
     throw new Error(`Input verification failed: ${JSON.stringify(values)}`);
   }
+}
+
+async function fillChapterBody(Runtime, Input, chapter) {
+  const point = await evalv(Runtime, `(() => {
+    const editor = document.querySelector('.ProseMirror,[contenteditable="true"]');
+    if (!editor) return null;
+    const r = editor.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + Math.min(40, r.height / 2) };
+  })()`);
+  if (!point) throw new Error('Cannot locate chapter editor');
+  for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) {
+    await Input.dispatchMouseEvent({ type, x: point.x, y: point.y, button: 'left', clickCount: 1 });
+  }
+  await sleep(300);
   const inserted = await evalv(Runtime, `(() => {
     const editor = document.querySelector('.ProseMirror,[contenteditable="true"]');
     editor.focus();
-    document.execCommand('selectAll', false, null);
-    const ok = document.execCommand('insertText', false, ${JSON.stringify(chapter.body.trim() + '\n')});
-    editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: '' }));
+    editor.innerHTML = '<p></p>';
+    editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward', data: null }));
     editor.dispatchEvent(new Event('change', { bubbles: true }));
-    return { ok, chars: editor.innerText.trim().length };
+    const data = new DataTransfer();
+    data.setData('text/plain', ${JSON.stringify(chapter.body.trim() + '\n')});
+    editor.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: data }));
+    editor.dispatchEvent(new Event('change', { bubbles: true }));
+    return { chars: editor.innerText.trim().length };
   })()`);
-  if (!inserted.ok || inserted.chars < Math.min(500, chapter.bodyChars)) {
-    throw new Error(`Body insert failed: ${JSON.stringify(inserted)}`);
+  await sleep(500);
+  if (!inserted || inserted.chars < Math.min(500, chapter.bodyChars)) {
+    throw new Error(`Body paste failed: ${JSON.stringify(inserted)}`);
   }
+  return inserted.chars;
+}
+
+async function createDraft(client, chapter) {
+  const { Runtime, Input } = client;
+  await clickText(Runtime, Input, U.continueEditing, { wait: 1000 });
+  await waitFor(Runtime, `!!document.querySelector('.ProseMirror,[contenteditable="true"]')`, 30000, 'chapter editor');
+  await fillChapterMeta(Runtime, Input, chapter);
+  await fillChapterBody(Runtime, Input, chapter);
   await waitFor(Runtime, `([...document.querySelectorAll('button,[role="button"],a')]
     .some(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
       && !el.disabled
@@ -309,6 +334,90 @@ async function commandDrafts(bookDir, bookId, chapters, port) {
       console.log(`DRAFT ${expected}`);
       existingText += `\n${expected}`;
       await navigate(Page, draftBoxUrl(bookId, bookDir, 2));
+      await verifyVisibleDraftSaved(Runtime, chapter);
+    }
+  } finally {
+    await client.close();
+  }
+}
+
+async function verifyVisibleDraftSaved(Runtime, chapter) {
+  const row = await evalv(Runtime, `(() => {
+    const expected = ${JSON.stringify(fullChapterTitle(chapter))};
+    const row = [...document.querySelectorAll('tr')]
+      .find(item => (item.innerText || '').includes(expected));
+    if (!row) return null;
+    const cells = [...row.querySelectorAll('td')].map(td => td.innerText.trim());
+    return { title: cells[0] || '', words: Number(cells[1] || 0) };
+  })()`);
+  if (!row) throw new Error(`Saved draft verification failed: ${fullChapterTitle(chapter)} not visible`);
+  if (!row.words) throw new Error(`Saved draft verification failed: ${fullChapterTitle(chapter)} has 0 words`);
+  if (row.words > Math.max(chapter.bodyChars * 1.7, chapter.bodyChars + 1200)) {
+    throw new Error(`Saved draft verification failed: ${fullChapterTitle(chapter)} suspicious word count ${row.words}`);
+  }
+}
+
+async function collectDraftRows(Runtime, Page, bookId, bookDir) {
+  await navigate(Page, draftBoxUrl(bookId, bookDir, 2));
+  const rows = [];
+  for (let page = 1; page <= 10; page++) {
+    const current = await evalv(Runtime, `(() => [...document.querySelectorAll('tr')]
+      .map(row => {
+        const title = row.querySelector('.table-title a')?.innerText?.trim();
+        const cells = [...row.querySelectorAll('td')].map(td => td.innerText.trim());
+        const href = row.querySelector('a[href*="/publish/"]')?.href || '';
+        const match = title && title.match(/第\\s*0*(\\d+)\\s*章/);
+        return title && match && href ? { no: Number(match[1]), title, words: Number(cells[1] || 0), href } : null;
+      })
+      .filter(Boolean))()`);
+    rows.push(...current);
+    const clicked = await evalv(Runtime, `(() => {
+      const next = [...document.querySelectorAll('li')]
+        .find(el => el.getAttribute('aria-label') === '下一页' && !String(el.className).includes('disabled'));
+      if (!next) return false;
+      next.click();
+      return true;
+    })()`);
+    if (!clicked) break;
+    await sleep(1400);
+  }
+  const seen = new Map();
+  for (const row of rows) seen.set(String(row.no).padStart(3, '0'), row);
+  return seen;
+}
+
+async function saveDraft(Runtime, Input) {
+  await waitFor(Runtime, `([...document.querySelectorAll('button,[role="button"],a')]
+    .some(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
+      && !el.disabled
+      && ((el.innerText || el.textContent || '').trim()).includes('${U.saveDraft}')))`, 30000, 'save draft button');
+  if (!await clickText(Runtime, Input, U.saveDraft, { wait: 3500 })) throw new Error('Save draft button not found');
+  await waitFor(Runtime, `document.body.innerText.includes('${U.saved}')`, 30000, 'saved status');
+}
+
+async function repairDraft(client, href, chapter) {
+  const { Runtime, Input, Page } = client;
+  await navigate(Page, href);
+  await clickText(Runtime, Input, U.continueEditing, { wait: 1000 });
+  await waitFor(Runtime, `!!document.querySelector('.ProseMirror,[contenteditable="true"]')`, 30000, 'chapter editor');
+  await fillChapterMeta(Runtime, Input, chapter);
+  const chars = await fillChapterBody(Runtime, Input, chapter);
+  await saveDraft(Runtime, Input);
+  console.log(`REPAIR ${fullChapterTitle(chapter)} ${chars}`);
+}
+
+async function commandRepair(bookDir, bookId, chapters, port) {
+  const client = await connect(port);
+  const { Runtime, Page } = client;
+  try {
+    const rows = await collectDraftRows(Runtime, Page, bookId, bookDir);
+    for (const chapter of chapters) {
+      const row = rows.get(chapter.padded);
+      if (!row) {
+        console.log(`MISSING_DRAFT ${fullChapterTitle(chapter)}`);
+        continue;
+      }
+      await repairDraft(client, row.href, chapter);
     }
   } finally {
     await client.close();
@@ -415,6 +524,7 @@ async function main() {
   if (command === 'scan') return commandScan(chapters);
   if (!bookId) throw new Error('--book-id is required for drafts/publish/all');
   if (command === 'drafts') return commandDrafts(bookDir, bookId, chapters, port);
+  if (command === 'repair') return commandRepair(bookDir, bookId, chapters, port);
   if (command === 'publish') return commandPublish(bookDir, bookId, chapters, port);
   if (command === 'all') {
     await commandDrafts(bookDir, bookId, chapters, port);
