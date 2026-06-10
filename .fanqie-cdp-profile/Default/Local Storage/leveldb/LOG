@@ -1,5 +1,0 @@
-2026/05/30-00:07:35.892 1aa00 Creating DB F:\ai\.fanqie-cdp-profile\Default\Local Storage\leveldb since it was missing.
-2026/05/30-00:07:36.193 1aa00 Reusing MANIFEST F:\ai\.fanqie-cdp-profile\Default\Local Storage\leveldb/MANIFEST-000001
-2026/05/30-00:08:36.347 1925c Level-0 table #5: started
-2026/05/30-00:08:36.354 1925c Level-0 table #5: 36509 bytes OK
-2026/05/30-00:08:36.357 1925c Delete type=0 #3
