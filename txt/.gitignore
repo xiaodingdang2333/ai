@@ -26,3 +26,22 @@ Thumbs.db
 *api_key*
 credentials*.json
 secrets*.json
+
+
+# browser / CDP runtime profiles
+.fanqie-cdp-profile/
+.fanqie-profiles/
+
+# dependencies
+node_modules/
+
+# generated output
+output/
+
+# temp/cache/log
+.cache/
+tmp/
+temp/
+*.log
+*.tmp
+*.swp

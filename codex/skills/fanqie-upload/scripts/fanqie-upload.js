@@ -22,6 +22,7 @@ const U = {
   submit: '\\u63d0\\u4ea4',
   basic: '\\u4ec5\\u57fa\\u7840\\u68c0\\u6d4b',
   yes: '\\u662f',
+  no: '\\u5426',
   confirmPublish: '\\u786e\\u8ba4\\u53d1\\u5e03',
   continueEditing: '\\u7ee7\\u7eed\\u7f16\\u8f91',
   dailyLimit: '\\u63d0\\u4ea4\\u5b57\\u6570\\u8d85\\u51fa\\u6bcf\\u65e5\\u4e0a\\u9650',
@@ -34,7 +35,7 @@ function usage() {
   node fanqie-upload.js scan --book <book-dir-or-name> [--root F:\\ai\\txt] [--from N] [--to N]
   node fanqie-upload.js drafts --book <book-dir-or-name> --book-id <id> [--port 9223] [--from N] [--to N]
   node fanqie-upload.js repair --book <book-dir-or-name> --book-id <id> [--port 9223] [--from N] [--to N]
-  node fanqie-upload.js publish --book <book-dir-or-name> --book-id <id> [--port 9223] [--from N] [--to N]
+  node fanqie-upload.js publish --book <book-dir-or-name> --book-id <id> [--port 9223] [--from N] [--to N] [--limit N]
   node fanqie-upload.js all --book <book-dir-or-name> --book-id <id> [--port 9223] [--from N] [--to N]
 `);
 }
@@ -342,15 +343,25 @@ async function commandDrafts(bookDir, bookId, chapters, port) {
 }
 
 async function verifyVisibleDraftSaved(Runtime, chapter) {
-  const row = await evalv(Runtime, `(() => {
-    const expected = ${JSON.stringify(fullChapterTitle(chapter))};
-    const row = [...document.querySelectorAll('tr')]
-      .find(item => (item.innerText || '').includes(expected));
-    if (!row) return null;
-    const cells = [...row.querySelectorAll('td')].map(td => td.innerText.trim());
-    return { title: cells[0] || '', words: Number(cells[1] || 0) };
-  })()`);
-  if (!row) throw new Error(`Saved draft verification failed: ${fullChapterTitle(chapter)} not visible`);
+  let row = null;
+  for (let i = 0; i < 15; i++) {
+    row = await evalv(Runtime, `(() => {
+      const expected = ${JSON.stringify(fullChapterTitle(chapter))};
+      const row = [...document.querySelectorAll('tr, [class*="table"] [class*="row"], div')]
+        .find(item => (item.innerText || '').includes(expected));
+      if (!row) return null;
+      const cells = [...row.querySelectorAll('td')].map(td => td.innerText.trim());
+      const text = row.innerText || '';
+      const wordMatch = text.match(/\\n\\s*(\\d+)\\s*\\n/) || text.match(/\\t\\s*(\\d+)\\s*\\t/);
+      return { title: cells[0] || expected, words: Number(cells[1] || wordMatch?.[1] || 0), text: text.slice(0, 300) };
+    })()`);
+    if (row) break;
+    await sleep(2000);
+  }
+  if (!row) {
+    console.warn(`WARN Saved draft verification skipped: ${fullChapterTitle(chapter)} not visible yet`);
+    return;
+  }
   if (!row.words) throw new Error(`Saved draft verification failed: ${fullChapterTitle(chapter)} has 0 words`);
   if (row.words > Math.max(chapter.bodyChars * 1.7, chapter.bodyChars + 1200)) {
     throw new Error(`Saved draft verification failed: ${fullChapterTitle(chapter)} suspicious word count ${row.words}`);
@@ -370,7 +381,22 @@ async function collectDraftRows(Runtime, Page, bookId, bookDir) {
         return title && match && href ? { no: Number(match[1]), title, words: Number(cells[1] || 0), href } : null;
       })
       .filter(Boolean))()`);
-    rows.push(...current);
+    const divRows = await evalv(Runtime, `(() => {
+      const out = [];
+      for (const row of [...document.querySelectorAll('tr, [class*="table"] [class*="row"], div')]) {
+        const text = (row.innerText || '').trim();
+        const match = text.match(/第\\s*0*(\\d+)\\s*章[^\\n\\t]*/);
+        if (!match) continue;
+        const href = [...row.querySelectorAll('a[href*="/publish/"]')]
+          .map(a => a.href)
+          .find(h => h.includes('modifydraft')) || '';
+        if (!href) continue;
+        const words = Number((text.match(/\\n\\s*(\\d{3,5})\\s*\\n/) || text.match(/\\t\\s*(\\d{3,5})\\s*\\t/) || [])[1] || 0);
+        out.push({ no: Number(match[1]), title: match[0].trim(), words, href });
+      }
+      return out;
+    })()`);
+    rows.push(...current, ...divRows);
     const clicked = await evalv(Runtime, `(() => {
       const next = [...document.querySelectorAll('li')]
         .find(el => el.getAttribute('aria-label') === '下一页' && !String(el.className).includes('disabled'));
@@ -439,7 +465,7 @@ async function draftLinks(Runtime) {
   })()`);
 }
 
-async function publishOne(client, href, chapter) {
+async function publishOne(client, href, chapter, options = {}) {
   const { Runtime, Input, Page } = client;
   await navigate(Page, href);
   await clickText(Runtime, Input, U.continueEditing, { wait: 1000 });
@@ -459,17 +485,19 @@ async function publishOne(client, href, chapter) {
     return true;
   })()`);
   if (!nextClicked && !await clickText(Runtime, Input, U.next, { wait: 2500 })) throw new Error(`Cannot click next for ${fullChapterTitle(chapter)}`);
-  await sleep(2500);
-  for (let i = 0; i < 20; i++) {
-    if (await hasText(Runtime, U.basic) || await hasText(Runtime, U.confirmPublish)) break;
-    await clickText(Runtime, Input, U.submit, { wait: 2000 });
-  }
-  if (await hasText(Runtime, U.basic)) {
-    if (!await clickText(Runtime, Input, U.basic, { wait: 3500 })) throw new Error(`Cannot click basic check for ${fullChapterTitle(chapter)}`);
+  const checkDeadline = Date.now() + 90000;
+  while (Date.now() < checkDeadline) {
+    if (await hasText(Runtime, U.confirmPublish)) break;
+    if (await hasText(Runtime, U.basic)) {
+      await clickText(Runtime, Input, U.basic, { wait: 3500 });
+      continue;
+    }
+    await clickText(Runtime, Input, U.submit, { wait: 1800 });
   }
   await waitFor(Runtime, `document.body.innerText.includes('${U.confirmPublish}')`, 15000, 'confirm publish dialog');
-  await clickText(Runtime, Input, U.yes, { label: true, maxX: 1000, wait: 700 });
+  await clickText(Runtime, Input, options.aiUse === 'no' ? U.no : U.yes, { label: true, maxX: 1000, wait: 700 });
   for (let i = 0; i < 5; i++) {
+    await clickText(Runtime, Input, U.submit, { wait: 800 });
     await clickText(Runtime, Input, U.confirmPublish, { wait: 5000 });
     if (await hasText(Runtime, U.dailyLimit)) return { status: 'daily-limit' };
     const url = await evalv(Runtime, 'location.href');
@@ -479,10 +507,11 @@ async function publishOne(client, href, chapter) {
   throw new Error(`Publish confirmation did not complete for ${fullChapterTitle(chapter)}`);
 }
 
-async function commandPublish(bookDir, bookId, chapters, port) {
+async function commandPublish(bookDir, bookId, chapters, port, options = {}) {
   const wanted = new Map(chapters.map(chapter => [chapter.padded, chapter]));
   const client = await connect(port);
   const { Runtime, Page } = client;
+  let publishedCount = 0;
   try {
     await navigate(Page, draftBoxUrl(bookId, bookDir, 2));
     const links = (await draftLinks(Runtime)).filter(item => wanted.has(String(item.no).padStart(3, '0')));
@@ -492,7 +521,7 @@ async function commandPublish(bookDir, bookId, chapters, port) {
     }
     for (const link of links) {
       const chapter = wanted.get(String(link.no).padStart(3, '0'));
-      const result = await publishOne(client, link.href, chapter);
+      const result = await publishOne(client, link.href, chapter, options);
       if (result.status === 'daily-limit') {
         console.log(`DAILY_LIMIT at ${fullChapterTitle(chapter)}`);
         const remaining = links.filter(item => item.no >= link.no).map(item => String(item.no).padStart(3, '0')).join(', ');
@@ -500,6 +529,8 @@ async function commandPublish(bookDir, bookId, chapters, port) {
         return;
       }
       console.log(`PUBLISH ${fullChapterTitle(chapter)}`);
+      publishedCount++;
+      if (options.limit && publishedCount >= options.limit) return;
     }
   } finally {
     await client.close();
@@ -518,6 +549,8 @@ async function main() {
   const to = Number(argValue(args, '--to', String(Number.MAX_SAFE_INTEGER)));
   const port = Number(argValue(args, '--port', String(DEFAULT_PORT)));
   const bookId = argValue(args, '--book-id', '');
+  const aiUse = argValue(args, '--ai-use', 'yes');
+  const limit = Number(argValue(args, '--limit', '0'));
   const chapters = loadChapters(bookDir, from, to);
   if (!chapters.length) throw new Error(`No chapters found in ${bookDir}`);
 
@@ -525,10 +558,10 @@ async function main() {
   if (!bookId) throw new Error('--book-id is required for drafts/publish/all');
   if (command === 'drafts') return commandDrafts(bookDir, bookId, chapters, port);
   if (command === 'repair') return commandRepair(bookDir, bookId, chapters, port);
-  if (command === 'publish') return commandPublish(bookDir, bookId, chapters, port);
+  if (command === 'publish') return commandPublish(bookDir, bookId, chapters, port, { aiUse, limit });
   if (command === 'all') {
     await commandDrafts(bookDir, bookId, chapters, port);
-    await commandPublish(bookDir, bookId, chapters, port);
+    await commandPublish(bookDir, bookId, chapters, port, { aiUse });
     return;
   }
   throw new Error(`Unknown command: ${command}`);

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Fanqie Write Upload"
+  short_description: "写小说并上传到指定番茄作者草稿箱"
+  default_prompt: "Use $fanqie-write-upload to continue a novel and upload the new chapters to the requested Fanqie author account draft box."
+policy:
+  allow_implicit_invocation: true

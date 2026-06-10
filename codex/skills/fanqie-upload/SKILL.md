@@ -26,7 +26,7 @@ For the current working convention, `--book` may be a full path or a folder name
 3. Run `drafts` to create missing drafts from local Markdown. The script skips chapters already visible in draft or published lists.
 4. Run `publish` to publish existing drafts in ascending chapter order.
 5. If Fanqie asks for a content check, choose `仅基础检测`.
-6. If Fanqie asks whether AI was used, choose `是`.
+6. If Fanqie asks whether AI was used, follow the command parameter: default `--ai-use yes`; use `--ai-use no` when the user asks to select `否`.
 7. If Fanqie reports `提交字数超出每日上限`, stop and report the remaining chapters. Do not keep retrying the same day.
 
 ## Current Book Shortcut
@@ -35,6 +35,12 @@ For `快穿：恶毒女配觉醒后，全员跪求我原谅`, use:
 
 ```powershell
 node codex\skills\fanqie-upload\scripts\fanqie-upload.js publish --book "快穿：恶毒女配觉醒后，全员跪求我原谅" --book-id "7642178186335226942" --from 23 --to 30
+```
+
+To publish while selecting `否` for AI usage:
+
+```powershell
+node codex\skills\fanqie-upload\scripts\fanqie-upload.js publish --book "小说名" --book-id "<番茄作品ID>" --from 1 --to 1 --ai-use no
 ```
 
 ## Safety Rules

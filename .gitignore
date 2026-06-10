@@ -35,3 +35,15 @@ temp/
 *.log
 *.tmp
 *.swp
+
+# Reasonix internal
+.reasonix/
+
+# one-off proxy diagnostics
+/proxy/
+
+# npm lockfile (auto-generated)
+package-lock.json
+
+# editor backups
+*.save
