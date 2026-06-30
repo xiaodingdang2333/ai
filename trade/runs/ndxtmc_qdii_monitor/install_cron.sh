@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CRON_LINE="30 6 * * 2-6 /home/admin/ai/trade/runs/ndxtmc_qdii_monitor/run_monitor.sh"
+MARKER="# ndxtmc qdii morning monitor"
+TMP_FILE="$(mktemp)"
+
+crontab -l 2>/dev/null | grep -vF "$MARKER" | grep -vF "/home/admin/ai/trade/runs/ndxtmc_qdii_monitor/run_monitor.sh" > "$TMP_FILE" || true
+{
+  cat "$TMP_FILE"
+  echo "$MARKER"
+  echo "$CRON_LINE $MARKER"
+} | crontab -
+rm -f "$TMP_FILE"
+
+echo "Installed cron:"
+crontab -l | grep -F "/home/admin/ai/trade/runs/ndxtmc_qdii_monitor/run_monitor.sh"

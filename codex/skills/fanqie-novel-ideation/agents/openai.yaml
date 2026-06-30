@@ -1,0 +1,7 @@
+interface:
+  display_name: "番茄新书灵感总控"
+  short_description: "用十二选三流程筛选新颖、好懂且可连载的番茄新书创意"
+  default_prompt: "使用 $fanqie-novel-ideation 为下一本番茄小说运行12选3反套路灵感筛选，先不要写正文。"
+
+policy:
+  allow_implicit_invocation: true

@@ -1,45 +1,76 @@
-# People.cn Paper Monitor
+# People.cn Real-Trade Monitor
 
-Local paper-trading monitor for `603000.SH`. It never places real orders.
+Local real-trade alert monitor for `603000.SH`. It never places real orders.
 
-Initial paper position:
+Recorded position:
 
 - Cost: 18.40 CNY
-- Shares: 700
-- Initial capital: 12,880 CNY
+- Original shares: 700
+- Sold: 200 shares at 16.60 on 2026-06-11
+- Current recorded shares: 500
 
 Rules:
 
-- Intraday price below 16.60: send a warning only, no paper sell.
-- Close below 16.60: create a next-trading-day sell plan.
-- Next trading day:
-  - If price is still below 16.60, execute the paper sell at the observed price.
-  - If price opens/recovers to 16.60 or above, cancel the paper sell plan.
-- First confirmed sell: 300 shares.
-- Second confirmed sell after another weak day: 200 shares.
-- High-volume break below 16.20: plan to exit remaining paper shares.
-- Take-profit 1: close at or above 19.30, plan to sell 200 shares next trading day if price still holds 19.30.
-- Take-profit 2: close at or above 20.20, plan to sell 300 shares next trading day if price still holds 20.20.
-- Take-profit 3: close at or above 21.20, plan to sell remaining shares next trading day if price still holds 21.20.
-- Buy-back: after a risk reduction, close reclaiming 17.50 creates a next-trading-day buy-back plan.
-  - Buy executes only if next trading day price is still at or above 17.50.
-  - Buy is canceled if price is above 18.50, to avoid chasing.
-  - Buy uses only recovered paper cash and only restores missing shares up to the original 700-share position.
+- 16.05 or below while recorded position is above 300 shares: notify to sell 200 shares.
+- Close below 16.10 while recorded position is above 300 shares: notify to sell 200 shares.
+- 16.50-16.80 rebound while recorded position is above 300 shares: fallback notify to sell 200 shares if it was not sold earlier.
+- Below 15.50: notify to sell the remaining recorded position.
+- No buy-back alert is enabled.
+- Alerts are deduplicated by trading date and signal kind.
 
-Notifier config, choose one environment variable:
+Notification config:
 
-- `WECHAT_WEBHOOK_URL`
-- `PUSHPLUS_TOKEN`
-- `SERVER_CHAN_SENDKEY`
+- ServerChan/Server酱微信推送 is used by default.
+- Local config is in `ntfy.env`.
+- Alerts include a feedback link to the existing public QR/login page service:
+  - `http://8.212.144.72:8090/renminwang.html?...`
+  - If no feedback is submitted, the monitor keeps the recorded position unchanged.
+  - If sell/buy feedback is submitted, `state.json` updates `position`, `cash`, and `manual_actions`.
+- Before sending each alert, the monitor reruns a lightweight vibetrading-style review using the latest quote. It may revise a raw threshold signal into "wait for rebound/confirmation" when price action has changed.
+- Alert bodies should include detailed reasoning: latest price action, portfolio context, triggering rule, revised conclusion, and invalidation/next-action conditions.
+- Key strategy nodes are checked at 09:40, 10:30, 11:20, 13:30, 14:45, and 15:05.
+- At a key node, the script only calls the optional real vibetrading/LLM review when price is near a decision level, moving sharply, near the day high/low, or already triggering a hard rule.
+- If vibetrading returns valid rule updates, the monitor writes them to `state.json` under `strategy_overrides` before sending the notification. The notification includes the updated values and the reason.
+- If no LLM key/command is configured, the key-node LLM layer is skipped and the existing hard-rule monitor continues normally.
+
+Optional vibetrading config in `ntfy.env`:
+
+```bash
+VIBETRADING_API_KEY=
+VIBETRADING_BASE_URL=https://api.openai.com/v1
+VIBETRADING_MODEL=deepseek-chat
+VIBETRADING_FAST_MODEL=deepseek-chat
+VIBETRADING_REASONER_MODEL=deepseek-reasoner
+VIBETRADING_REVIEW_CMD=/home/admin/ai/trade/vibetrading_review.py
+```
+
+Model routing:
+
+- Normal key-node reviews use `VIBETRADING_FAST_MODEL`.
+- Real-trade signals, large moves, or prices very close to action levels use `VIBETRADING_REASONER_MODEL`.
 
 Manual run:
 
-```powershell
-python F:\ai\trade\runs\renminwang_paper_monitor\monitor.py
+```bash
+cd /home/admin/ai/trade/runs/renminwang_paper_monitor
+source ./ntfy.env
+FORCE_MONITOR_RUN=1 python3 ./monitor.py
+```
+
+Update recorded position after a real trade:
+
+```bash
+python3 /home/admin/ai/trade/runs/renminwang_paper_monitor/monitor.py --set-position 300
+```
+
+Install Linux cron:
+
+```bash
+bash /home/admin/ai/trade/runs/renminwang_paper_monitor/install_cron.sh
 ```
 
 Files:
 
-- `state.json`: paper position, pending plan, processed dates.
-- `trades.log`: paper action log.
-- `scheduler.log`: Windows scheduled-task output.
+- `state.json`: recorded position, quote cache, sent alert keys.
+- `trades.log`: sent alert log.
+- `scheduler.log`: cron output.

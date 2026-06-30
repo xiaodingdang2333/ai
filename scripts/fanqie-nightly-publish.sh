@@ -11,9 +11,8 @@ STATE_SCRIPT="$WORK_ROOT/scripts/fanqie-nightly-state.js"
 NEXT_ALLOWED_FILE="$WORK_ROOT/output/fanqie-upload/nightly/next-allowed-epoch"
 ACCOUNT_SCRIPT="$WORK_ROOT/codex/skills/fanqie-write-upload/scripts/fanqie-account-cache.sh"
 UPLOAD_SCRIPT="$WORK_ROOT/codex/skills/fanqie-upload/scripts/fanqie-upload.js"
-MAX_WRITE_BATCHES_PER_BOOK="${MAX_WRITE_BATCHES_PER_BOOK:-1}"
 PUBLISH_THRESHOLD_CHARS="${PUBLISH_THRESHOLD_CHARS:-100000}"
-SERVER_CHAN_SENDKEY="${SERVER_CHAN_SENDKEY:-SCT359656T245KRDzgEMaHRDfMW9xG8xrz}"
+SERVER_CHAN_SENDKEY="${SERVER_CHAN_SENDKEY:-}"
 
 mkdir -p "$LOG_DIR" "$WORK_ROOT/output/fanqie-upload"
 
@@ -146,50 +145,6 @@ record_published_chapters() {
   done < <(rg '^PUBLISH ' "$log_file" || true)
 }
 
-write_chapters() {
-  local book="$1"
-  local account_name="$2"
-  local log_file="$3"
-  local count="$4"
-  local before after
-  before="$(latest_no "$book")"
-  log "No publishable drafts for $book. Ask Codex to write next $count chapters after $before."
-  if ! codex exec \
-    --dangerously-bypass-approvals-and-sandbox \
-    --skip-git-repo-check \
-    -C "$WORK_ROOT" \
-    -o "$log_file.codex-final.txt" \
-    "你在 /home/admin/ai 工作区执行自动夜间任务。请续写《${book}》接下来的 ${count} 章，只写本地文件，不要打开番茄后台，不要上传也不要发布。必须遵守本仓库记忆和小说写作默认要求：每章约3000中文字符且不低于2500，避免流水式对话和一行一句，更新对应细纲和追踪文件，最后运行本地扫描。目标账号仅供上下文：${account_name}。" \
-    > "$log_file.codex.log" 2>&1; then
-    handle_codex_quota_failure "$log_file.codex.log" "$book" || true
-    return 1
-  fi
-  after="$(latest_no "$book")"
-  if [[ -z "$after" || "$after" -le "$before" ]]; then
-    log "Codex did not create new chapters for $book."
-    return 1
-  fi
-  if (( after - before < count )); then
-    log "WARN: Codex created fewer than $count chapters for $book: before=$before after=$after"
-  fi
-  echo "$((before + 1)) $after"
-}
-
-upload_new_drafts() {
-  local book="$1"
-  local id="$2"
-  local port="$3"
-  local from="$4"
-  local to="$5"
-  node "$UPLOAD_SCRIPT" drafts \
-    --root "$WORK_ROOT/txt" \
-    --book "$book" \
-    --book-id "$id" \
-    --port "$port" \
-    --from "$from" \
-    --to "$to"
-}
-
 process_book() {
   local account="$1"
   local account_name="$2"
@@ -198,7 +153,6 @@ process_book() {
   local expected="$5"
   local ai_use="$6"
   local id
-  local write_batches=0
   local stamp
   stamp="$(date '+%Y%m%d-%H%M%S')"
   id="$(book_id "$book")"
@@ -223,14 +177,12 @@ process_book() {
 
   while true; do
     local publish_log="$LOG_DIR/${stamp}-${account}-${book//\//_}-publish.log"
-    local total_chars publish_limit write_count
+    local total_chars publish_limit
     total_chars="$(published_total_chars "$book")"
     publish_limit=0
-    write_count=5
     if (( total_chars >= PUBLISH_THRESHOLD_CHARS )); then
       publish_limit=1
-      write_count=1
-      log "$book has reached threshold ($total_chars chars); publish/write one chapter only."
+      log "$book has reached threshold ($total_chars chars); publish one chapter only."
     fi
     : > "$publish_log"
     run_publish "$book" "$id" "$port" "$publish_log" "$ai_use" "$publish_limit" || {
@@ -249,25 +201,9 @@ process_book() {
       continue
     fi
     if rg -q 'No matching drafts found' "$publish_log"; then
-      if (( write_batches >= MAX_WRITE_BATCHES_PER_BOOK )); then
-        log "No drafts for $book and write batch limit reached ($MAX_WRITE_BATCHES_PER_BOOK)."
-        break
-      fi
-      local write_log="$LOG_DIR/${stamp}-${account}-${book//\//_}-write-$((write_batches + 1))"
-      local range
-      if ! range="$(write_chapters "$book" "$account_name" "$write_log" "$write_count")"; then
-        break
-      fi
-      write_batches=$((write_batches + 1))
-      local from to
-      from="$(awk '{print $1}' <<<"$range")"
-      to="$(awk '{print $2}' <<<"$range")"
-      log "Upload newly written drafts for $book: $from-$to"
-      upload_new_drafts "$book" "$id" "$port" "$from" "$to" | tee "$write_log.upload.log" || {
-        notify "番茄草稿上传失败" "《${book}》新写章节 ${from}-${to} 上传失败。请查看：${write_log}.upload.log"
-        break
-      }
-      continue
+      log "No matching drafts found for $book; stop without auto-writing."
+      notify "番茄草稿箱无可发布章节" "《${book}》没有匹配的草稿，定时任务已停止处理本书；不会自动续写或自动上传新章。"
+      break
     fi
     log "No recognizable publish result for $book; stop this book."
     break

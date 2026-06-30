@@ -1,0 +1,37 @@
+{
+  "apps": "./.app.json",
+  "author": {
+    "name": "Canva Pty Ltd.",
+    "url": "https://www.canva.com"
+  },
+  "description": "Ask Canva to create on-brand social posts, presentations, marketing materials, or other visual assets based on your current conversation, then continue editing together in the chat.\n\nTry prompts like this:\n· Can you turn this image into a fully editable design, @Canva?\n· @Canva, create some social posts based on our recent campaign brief – remember to add our Brand Kit!\n· @Canva, resize these posts for different channels\n· I need my latest design translating into Spanish please @Canva!\n\nWant to take a more hands-on approach? Instantly open your design in Canva’s powerful editor for the final touches.",
+  "homepage": "https://www.canva.com",
+  "interface": {
+    "brandColor": "#00C4CC",
+    "brandColorDark": "#33F7FF",
+    "capabilities": [],
+    "category": "Creativity",
+    "composerIcon": "./assets/app-icon.png",
+    "defaultPrompt": [
+      "create some social media posts based on our October campaign brief",
+      "use these latest investor meeting notes to make a Q1 2026 pitch deck",
+      "can you resize this poster as an Instagram post for my online store?"
+    ],
+    "developerName": "Canva Pty Ltd.",
+    "displayName": "Canva",
+    "logo": "./assets/app-icon.png",
+    "longDescription": "Ask Canva to create on-brand social posts, presentations, marketing materials, or other visual assets based on your current conversation, then continue editing together in the chat.\n\nTry prompts like this:\n· Can you turn this image into a fully editable design, @Canva?\n· @Canva, create some social posts based on our recent campaign brief – remember to add our Brand Kit!\n· @Canva, resize these posts for different channels\n· I need my latest design translating into Spanish please @Canva!\n\nWant to take a more hands-on approach? Instantly open your design in Canva’s powerful editor for the final touches.",
+    "privacyPolicyURL": "https://www.canva.com/policies/privacy-policy/",
+    "screenshots": [],
+    "shortDescription": "Search, create, edit designs",
+    "supportURL": "https://www.canva.com/help/contact-us/",
+    "termsOfServiceURL": "https://www.canva.com/policies/terms-of-use/",
+    "websiteURL": "https://www.canva.com"
+  },
+  "keywords": [],
+  "license": "MIT",
+  "name": "canva",
+  "repository": "https://github.com/openai/plugins",
+  "skills": "./skills/",
+  "version": "9.0.0"
+}

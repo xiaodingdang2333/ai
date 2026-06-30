@@ -1,0 +1,56 @@
+diff --git a/config.ini b/config.ini
+index d11cc82..1296823 100755
+--- a/config.ini
++++ b/config.ini
+@@ -12,7 +12,7 @@ extname = epub
+ # 当下载格式为 txt 时，可设置其编码为 GBK 以兼容旧设备 (默认 UTF-8)
+ txt-encoding =
+ # 下载完成后是否保留章节缓存文件夹 (1 是，0 否)
+-preserve-chapter-cache = 0
++preserve-chapter-cache = 1
+ 
+ [source]
+ # 书籍内容语言 (可选值：zh_CN, zh_TW, zh_Hant，默认值：自动)
+@@ -22,17 +22,17 @@ active-rules = main-rules.json
+ # 指定当前激活规则中的某个书源，用于指定搜索、批量下载 (填写书源 ID)
+ source-id =
+ # 每个书源只显示前 N 条搜索记录 (不指定则为全部)
+-search-limit = 30
++search-limit = 10
+ # 是否过滤低相似度的搜索结果 (1 是，0 否)
+ search-filter = 1
+ 
+ [crawl]
+ # 并发上限 (默认值：100)
+-concurrency =
++concurrency = 4
+ # 最小间隔 (毫秒)
+-min-interval = 200
++min-interval = 400
+ # 最大间隔 (毫秒)
+-max-interval = 400
++max-interval = 700
+ # 是否启用重试，不启用则下载出错时中断下载 (1 是，0 否)
+ enable-retry = 1
+ # 最大重试次数 (针对首次下载失败的章节)
+diff --git a/rules/main-rules.json b/rules/main-rules.json
+index e023efa..b8a02ca 100755
+--- a/rules/main-rules.json
++++ b/rules/main-rules.json
+@@ -218,8 +218,7 @@
+       "paragraphTagClosed": true,
+       "filterTxt": "\\(本章完\\)",
+       "filterTag": "",
+-      "pagination": true,
+-      "nextPage": "#next_url"
++      "pagination": false
+     }
+   },
+   {
+@@ -417,4 +416,4 @@
+       "nextPage": ".row.row-detail > div > div > div:nth-child(2) > a:nth-child(4)"
+     }
+   }
+-]
+\ No newline at end of file
++]

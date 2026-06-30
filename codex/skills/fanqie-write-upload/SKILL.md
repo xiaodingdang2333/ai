@@ -9,6 +9,13 @@ description: Write or continue Chinese web-novel chapters in this workspace, upd
 
 Do the full workflow, not just uploading: read the novel context, write the chapter(s), update local tracking files, run local QA, switch to the requested Fanqie account, upload drafts, then verify the draft-list row count.
 
+## New Book Ideation Gate
+
+- This skill may continue existing books directly.
+- Before creating any future new Fanqie/Tomato book, run `fanqie-novel-ideation` and complete its mandatory `12 -> 3 -> user selection` funnel.
+- Do not create the project, outline, chapters, platform work, or drafts before the user explicitly selects one of the three finalists.
+- After selection, write exactly three trial chapters and return them for approval. Bulk writing and draft upload require a later explicit approval.
+
 ## Account Map
 
 - `西大水怪`: use logical account `account-a`, Snap cache backup `.fanqie-profiles/snap-backups/account-a-snap`, usual CDP port `9223`.
@@ -21,12 +28,12 @@ Do the full workflow, not just uploading: read the novel context, write the chap
 - All `桃枝醒醒` books: publish with `--ai-use yes`.
 - All `泡芙软呼呼` books: publish with `--ai-use no`.
 
-## Scheduled Publishing Defaults
+## Manual Publishing Default
 
-- When an automated publishing task detects a book has reached 100,000 total published characters, notify the user via WeChat/ServerChan once and then publish/write only 1 chapter per day for that book.
-- Before 100,000 published characters, the nightly task may refill drafts in bounded batches, usually 5 chapters at a time.
-- If Codex quota is exhausted while writing during a scheduled task, distinguish five-hour quota from weekly quota: for five-hour quota, delay the next allowed run by 5 hours; for weekly quota, resume at 01:00 on the parsed weekly reset date when available.
-- If the scheduled task hits an unresolved account, upload, publish, quota, or script problem, send a WeChat/ServerChan notification with the failing book and log path.
+- Do not schedule or automatically publish Fanqie/Tomato chapters. The user performs the final publish action in the Fanqie author console.
+- When the user asks to write or continue a book, finish the writing and local QA, then upload the new chapters to the correct draft box automatically unless the user says not to upload.
+- Verify every uploaded draft from the platform draft list. Report the uploaded chapter range, titles, and any suspicious count instead of publishing.
+- Never delete, overwrite, or blindly retry drafts after an upload mismatch. Preserve the platform state and ask the user before destructive repair.
 - A new login cache is not considered reliable until it passes replay verification: restart the browser from that cache and confirm the expected visible account name.
 
 Important: on this Linux server, Snap Chromium ignores isolation in child processes and effectively uses `/root/snap/chromium/common/chromium`. Do not rely only on `--user-data-dir`. Restore the correct Snap cache before starting Chromium, and save it again after upload.
@@ -86,13 +93,13 @@ Also check at least:
 node codex/skills/fanqie-upload/scripts/fanqie-upload.js drafts --root /home/admin/ai/txt --book '<书名>' --book-id '<ID>' --port <PORT> --from N --to M
 ```
 
-For publish requests, use `publish` instead of `drafts`. Obey the user's AI declaration choice:
+Only if the user explicitly reverses the manual-publishing policy and requests a one-off automated publish, do not use Chrome/CDP clicking by default. Use the backend API publisher and obey the user's AI declaration choice:
 
 ```bash
-node codex/skills/fanqie-upload/scripts/fanqie-upload.js publish --root /home/admin/ai/txt --book '<书名>' --book-id '<ID>' --port <PORT> --from N --to M --ai-use no
+node /home/admin/ai/scripts/fanqie-api-publish.js --account account-a --expected-account '西大水怪' --book '<书名>' --book-id '<ID>' --from N --to M --ai-use no
 ```
 
-Use `--ai-use no` when the user says to select `否`; otherwise the uploader defaults to `yes`.
+Use `--ai-use no` when the user says to select `否` or account defaults require it; otherwise use the account default. Publish until the API reports the daily limit, then stop for that day.
 
 5. Verify the draft list row after upload. The row must show the expected chapter title and a nonzero, non-suspicious platform word count.
 6. Save the currently active account cache after successful upload:

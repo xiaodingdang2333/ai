@@ -4,6 +4,7 @@ set -euo pipefail
 WORK_ROOT="${WORK_ROOT:-/home/admin/ai}"
 SNAP_PROFILE="${SNAP_PROFILE:-/root/snap/chromium/common/chromium}"
 BACKUP_DIR="${BACKUP_DIR:-$WORK_ROOT/.fanqie-profiles/snap-backups}"
+LIVE_DIR="${LIVE_DIR:-/root/snap/chromium/common/fanqie-profiles/live}"
 CHROMIUM="${CHROMIUM:-/snap/bin/chromium}"
 
 usage() {
@@ -34,7 +35,7 @@ backup_name() {
 
 account_dir() {
   case "${1:-}" in
-    account-a|account-b|account-c) printf '%s\n' "$SNAP_PROFILE" ;;
+    account-a|account-b|account-c) printf '%s\n' "$LIVE_DIR/$1" ;;
     *) echo "Unknown account: ${1:-}" >&2; exit 2 ;;
   esac
 }
@@ -51,10 +52,14 @@ stop_chrome() {
 save_cache() {
   local account="$1"
   local name
+  local profile
   name="$(backup_name "$account")"
+  profile="$(account_dir "$account")"
   mkdir -p "$BACKUP_DIR"
   rm -rf "$BACKUP_DIR/$name"
-  if [[ -d "$SNAP_PROFILE" ]]; then
+  if [[ -d "$profile" ]]; then
+    cp -a "$profile" "$BACKUP_DIR/$name"
+  elif [[ -d "$SNAP_PROFILE" ]]; then
     cp -a "$SNAP_PROFILE" "$BACKUP_DIR/$name"
   else
     mkdir -p "$BACKUP_DIR/$name"
@@ -65,19 +70,26 @@ save_cache() {
 restore_cache() {
   local account="$1"
   local name
+  local profile
   name="$(backup_name "$account")"
+  profile="$(account_dir "$account")"
   if [[ ! -d "$BACKUP_DIR/$name" ]]; then
     echo "Missing cache backup: $BACKUP_DIR/$name" >&2
     exit 3
   fi
-  rm -rf "$SNAP_PROFILE"
-  mkdir -p "$(dirname "$SNAP_PROFILE")"
-  cp -a "$BACKUP_DIR/$name" "$SNAP_PROFILE"
+  rm -rf "$profile"
+  mkdir -p "$(dirname "$profile")"
+  cp -a "$BACKUP_DIR/$name" "$profile"
+  rm -f "$profile"/Singleton*
 }
 
 start_chrome() {
   local account="$1"
   local port="$2"
+  local profile
+  profile="$(account_dir "$account")"
+  mkdir -p "$profile"
+  rm -f "$profile"/Singleton*
   mkdir -p "$WORK_ROOT/output/fanqie-upload"
   nohup "$CHROMIUM" \
     --headless=new \
@@ -88,11 +100,12 @@ start_chrome() {
     --noerrdialogs \
     --no-first-run \
     --password-store=basic \
+    --user-data-dir="$profile" \
     --ozone-platform=headless \
     --ozone-override-screen-size=1000,800 \
     --use-angle=swiftshader-webgl \
     'https://fanqienovel.com/writer/zone' \
-    > "$WORK_ROOT/output/fanqie-upload/chrome-$account.log" 2>&1 &
+    > "$WORK_ROOT/output/fanqie-upload/chrome-$account.log" 2>&1 7>&- 8>&- 9>&- &
   echo "$!"
 }
 

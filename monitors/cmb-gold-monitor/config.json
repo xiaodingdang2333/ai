@@ -1,0 +1,35 @@
+{
+  "asset": "CMB gold account",
+  "display_name": "招行黄金16克",
+  "grams": 16.0,
+  "core_physical_target_grams": 50.0,
+  "core_physical_target_use": "结婚用实物黄金，预计1-2年内使用；50克以内按婚用目标仓管理，超过50克的部分才按投资理财仓管理。",
+  "cost_price_per_g": 918.94,
+  "initial_app_buy_price": 895.86,
+  "initial_app_sell_price": 890.86,
+  "initial_api_au9999_price": 892.0,
+  "app_buy_offset_from_au9999": 3.86,
+  "sell_spread_per_g": 5.0,
+  "source_url": "https://m.cmbchina.com/api/rate/gold",
+  "primary_gold_no": "AU9999",
+  "secondary_gold_no": "AUTD",
+  "alert_cooldown_minutes": 360,
+  "recheck_delay_seconds": 3,
+  "vibetrading_proximity_yuan": 15.0,
+  "strategy_summary_times": [
+    "09:10",
+    "10:30",
+    "14:50",
+    "20:10",
+    "23:30"
+  ],
+  "thresholds": {
+    "buy_add_price": 870.0,
+    "buy_wait_freefall_price": 850.0,
+    "sell_risk_price": 870.0,
+    "sell_breakeven_price": 918.94,
+    "sell_take_profit_price": 960.0,
+    "risk_daily_drop_abs": 8.0,
+    "deep_drop_abs": 15.0
+  }
+}

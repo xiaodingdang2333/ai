@@ -1,0 +1,54 @@
+{
+  "name": "CKG-URC round trip Sichuan Airlines 2026-08",
+  "route": "重庆(CKG) ⇄ 乌鲁木齐(URC)",
+  "passengers": "1 adult economy",
+  "baseline_price": 2520,
+  "min_notify_delta": 50,
+  "monitor_price_basis": "Ctrip mobile SEO exact-flight one-way sum. The uploaded screenshot showed app round-trip package total 2520; the automated source may differ because app package discounts/coupons are not exposed in this SEO page.",
+  "currency": "CNY",
+  "outbound": {
+    "date": "2026-08-15",
+    "weekday": "Saturday",
+    "flight_no": "3U3209",
+    "airline": "Sichuan Airlines",
+    "depart_airport": "重庆江北机场 T3",
+    "depart_time": "13:00",
+    "arrive_airport": "乌鲁木齐天山机场",
+    "arrive_time": "17:10"
+  },
+  "return": {
+    "date": "2026-08-23",
+    "weekday": "Sunday",
+    "flight_no": "3U3210",
+    "airline": "Sichuan Airlines",
+    "depart_airport": "乌鲁木齐天山机场",
+    "depart_time": "18:20",
+    "arrive_airport": "重庆江北机场 T3",
+    "arrive_time": "22:10"
+  },
+  "source_screenshot": "/home/admin/ai/output/qr-login/uploads/20260611-233034-4236d468411552b114f5a4417b93ff2.jpg",
+  "mobile_verify_steps": [
+    "打开携程App或微信/支付宝携程小程序，选择往返机票。",
+    "去程填重庆(CKG)到乌鲁木齐(URC)，日期2026-08-15，筛选四川航空3U3209，13:00-17:10。",
+    "返程填乌鲁木齐(URC)到重庆(CKG)，日期2026-08-23，筛选四川航空3U3210，18:20-22:10。",
+    "确认1名成人经济舱，进入支付确认页查看最终总价；最终总价可能受券、基建燃油、行李、会员价影响。"
+  ],
+  "sources": [
+    {
+      "name": "ctrip-mobile-exact-flight-sum",
+      "type": "ctrip_mobile_exact_sum",
+      "outbound_url": "https://m.ctrip.com/html5/flight/CKG-URC-day-65.html",
+      "return_url": "https://m.ctrip.com/html5/flight/URC-CKG-day-73.html"
+    },
+    {
+      "name": "ctrip-mobile-outbound-fallback",
+      "type": "html",
+      "url": "https://m.ctrip.com/html5/flight/CKG-URC-day-65.html"
+    },
+    {
+      "name": "tongcheng-page",
+      "type": "html",
+      "url": "https://www.ly.com/flights/itinerary/roundtrip/ckg-urc?date=2026-08-15&backdate=2026-08-23"
+    }
+  ]
+}

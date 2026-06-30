@@ -47,3 +47,28 @@ package-lock.json
 
 # editor backups
 *.save
+
+# local credentials and live service state
+*.env
+**/env
+*.token
+*.lock
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+/runtime/
+
+# reproducible large research data/results
+/trade/runs/dip_rebound_a_share/data/prices/
+/trade/runs/dip_rebound_a_share/results/
+/trade/runs/dip_rebound_a_share/logs/
+
+# embedded upstream repository; portable copy is managed under codex/portable
+/tools/sonovel-tool/
+
+# Codex portable snapshot scratch files and local recovery key
+/codex/portable/*.tmp
+/codex/portable/recovery-passphrase.txt
+
+# accidental one-off shell artifact
+/import urllib.parse; print(urllib.parse.quote('AGENTS.md')))

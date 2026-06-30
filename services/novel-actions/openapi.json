@@ -1,0 +1,246 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "小叮当长篇小说工作台",
+    "description": "私人长篇小说工作流：市场研究、12选3、项目状态、章节保存、质量检查和番茄草稿上传。服务不提供发布能力。",
+    "version": "1.0.0"
+  },
+  "servers": [{"url": "https://iz5ts314xq7lzp4t07pfmoz.tail04405f.ts.net"}],
+  "security": [{"bearerAuth": []}],
+  "paths": {
+    "/v1/defaults": {
+      "get": {
+        "operationId": "getNovelWorkflowDefaults",
+        "summary": "读取长期写作规则、标签要求和账号白名单",
+        "responses": {"200": {"description": "工作流规则"}}
+      }
+    },
+    "/v1/market-jobs": {
+      "post": {
+        "operationId": "startMarketStudy",
+        "summary": "用公开榜单书目启动本地拆书任务",
+        "x-openai-isConsequential": false,
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {
+            "type": "object",
+            "required": ["genre", "ranking_books"],
+            "properties": {
+              "genre": {"type": "string"},
+              "sample_limit": {"type": "integer", "minimum": 3, "maximum": 6},
+              "ranking_books": {
+                "type": "array", "minItems": 1, "maxItems": 15,
+                "items": {
+                  "type": "object", "required": ["title"],
+                  "properties": {
+                    "rank": {"type": "integer"},
+                    "title": {"type": "string"},
+                    "author": {"type": "string"}
+                  }
+                }
+              }
+            }
+          }}}
+        },
+        "responses": {"200": {"description": "后台任务ID"}}
+      }
+    },
+    "/v1/jobs/{job_id}": {
+      "get": {
+        "operationId": "getNovelJob",
+        "summary": "查询后台任务结果",
+        "parameters": [{"$ref": "#/components/parameters/JobId"}],
+        "responses": {"200": {"description": "任务状态和结果"}}
+      }
+    },
+    "/v1/ideations": {
+      "post": {
+        "operationId": "saveTwelveNovelCandidates",
+        "summary": "保存恰好12个完成评分的候选方案",
+        "x-openai-isConsequential": false,
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {
+            "type": "object",
+            "required": ["genre", "candidates"],
+            "properties": {
+              "genre": {"type": "string"},
+              "market_job_id": {"type": "string"},
+              "candidates": {"type": "array", "minItems": 12, "maxItems": 12, "items": {"type": "object"}}
+            }
+          }}}
+        },
+        "responses": {"200": {"description": "选题记录ID"}}
+      }
+    },
+    "/v1/ideations/{ideation_id}/select": {
+      "post": {
+        "operationId": "selectNovelCandidate",
+        "summary": "记录用户从12个候选中明确选择的方案",
+        "x-openai-isConsequential": true,
+        "parameters": [{"name": "ideation_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {
+            "type": "object", "required": ["candidate_no"],
+            "properties": {"candidate_no": {"type": "integer", "minimum": 1, "maximum": 12}}
+          }}}
+        },
+        "responses": {"200": {"description": "已选择方案"}}
+      }
+    },
+    "/v1/books": {
+      "post": {
+        "operationId": "createNovelProject",
+        "summary": "根据已选方案创建本地新书项目",
+        "x-openai-isConsequential": true,
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {
+            "type": "object", "required": ["ideation_id", "title", "account"],
+            "properties": {
+              "ideation_id": {"type": "string"},
+              "title": {"type": "string"},
+              "account": {"type": "string", "enum": ["account-a", "account-b", "account-c"]},
+              "metadata": {"type": "object"}
+            }
+          }}}
+        },
+        "responses": {"200": {"description": "新书ID、阶段和版本"}}
+      }
+    },
+    "/v1/books/{book_id}/context": {
+      "get": {
+        "operationId": "getNovelWritingContext",
+        "summary": "写作前读取状态、最近三章和相关历史片段",
+        "parameters": [
+          {"$ref": "#/components/parameters/BookId"},
+          {"name": "query", "in": "query", "required": false, "schema": {"type": "string"}}
+        ],
+        "responses": {"200": {"description": "受控长度的可靠写作上下文"}}
+      }
+    },
+    "/v1/books/{book_id}/chapters": {
+      "post": {
+        "operationId": "saveNovelChapters",
+        "summary": "保存或修订最多4章；三章未批准时禁止第4章",
+        "x-openai-isConsequential": false,
+        "parameters": [{"$ref": "#/components/parameters/BookId"}],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {
+            "type": "object", "required": ["expected_revision", "chapters"],
+            "properties": {
+              "expected_revision": {"type": "integer"},
+              "chapters": {
+                "type": "array", "minItems": 1, "maxItems": 4,
+                "items": {
+                  "type": "object", "required": ["chapter_no", "title", "body", "summary"],
+                  "properties": {
+                    "chapter_no": {"type": "integer", "minimum": 1},
+                    "title": {"type": "string"},
+                    "body": {"type": "string"},
+                    "summary": {"type": "string"}
+                  }
+                }
+              }
+            }
+          }}}
+        },
+        "responses": {"200": {"description": "更新后的阶段和版本"}, "409": {"description": "版本或阶段冲突"}}
+      }
+    },
+    "/v1/books/{book_id}/state": {
+      "put": {
+        "operationId": "updateNovelState",
+        "summary": "更新人物、时间线、伏笔、章节索引和结构化事实",
+        "x-openai-isConsequential": false,
+        "parameters": [{"$ref": "#/components/parameters/BookId"}],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {
+            "type": "object", "required": ["expected_revision", "state"],
+            "properties": {"expected_revision": {"type": "integer"}, "state": {"type": "object"}}
+          }}}
+        },
+        "responses": {"200": {"description": "更新后的版本"}}
+      }
+    },
+    "/v1/books/{book_id}/qa": {
+      "post": {
+        "operationId": "runNovelQualityChecks",
+        "summary": "检查字数、正文污染、重复和部分状态冲突",
+        "x-openai-isConsequential": false,
+        "parameters": [{"$ref": "#/components/parameters/BookId"}],
+        "requestBody": {"$ref": "#/components/requestBodies/ChapterRange"},
+        "responses": {"200": {"description": "逐章QA结果"}}
+      }
+    },
+    "/v1/books/{book_id}/trial-approval": {
+      "post": {
+        "operationId": "approveThreeChapterTrial",
+        "summary": "用户明确批准前三章后开启批量写作",
+        "x-openai-isConsequential": true,
+        "parameters": [{"$ref": "#/components/parameters/BookId"}],
+        "responses": {"200": {"description": "批量写作已开放"}}
+      }
+    },
+    "/v1/books/{book_id}/platform-bind-jobs": {
+      "post": {
+        "operationId": "bindFanqieBook",
+        "summary": "用户手动创建作品后按完整书名和账号绑定作品ID",
+        "x-openai-isConsequential": true,
+        "parameters": [{"$ref": "#/components/parameters/BookId"}],
+        "responses": {"200": {"description": "后台任务ID"}}
+      }
+    },
+    "/v1/books/{book_id}/draft-upload-jobs": {
+      "post": {
+        "operationId": "uploadFanqieDrafts",
+        "summary": "上传并验收指定范围草稿，绝不发布",
+        "x-openai-isConsequential": true,
+        "parameters": [{"$ref": "#/components/parameters/BookId"}],
+        "requestBody": {"$ref": "#/components/requestBodies/ChapterRange"},
+        "responses": {"200": {"description": "草稿上传任务ID"}}
+      }
+    },
+    "/v1/books/{book_id}/assets": {
+      "post": {
+        "operationId": "saveNovelAssets",
+        "summary": "保存当前对话中的封面图片或文本素材",
+        "x-openai-isConsequential": false,
+        "parameters": [{"$ref": "#/components/parameters/BookId"}],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {
+            "type": "object", "required": ["openaiFileIdRefs"],
+            "properties": {
+              "openaiFileIdRefs": {
+                "type": "array", "minItems": 1, "maxItems": 10,
+                "items": {"type": "string"},
+                "description": "当前对话中的 OpenAI 文件引用"
+              }
+            }
+          }}}
+        },
+        "responses": {"200": {"description": "保存后的本地路径"}}
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {"bearerAuth": {"type": "http", "scheme": "bearer"}},
+    "parameters": {
+      "BookId": {"name": "book_id", "in": "path", "required": true, "schema": {"type": "string"}},
+      "JobId": {"name": "job_id", "in": "path", "required": true, "schema": {"type": "string"}}
+    },
+    "requestBodies": {
+      "ChapterRange": {
+        "required": true,
+        "content": {"application/json": {"schema": {
+          "type": "object", "required": ["from", "to"],
+          "properties": {"from": {"type": "integer", "minimum": 1}, "to": {"type": "integer", "minimum": 1}}
+        }}}
+      }
+    }
+  }
+}

@@ -1,0 +1,3 @@
+[submodule "tools/sonovel-tool"]
+	path = tools/sonovel-tool
+	url = https://github.com/joe510603/sonovel-tool.git

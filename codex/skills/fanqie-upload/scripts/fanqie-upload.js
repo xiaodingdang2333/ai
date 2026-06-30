@@ -11,9 +11,19 @@ function loadCdp() {
   }
 }
 
-const CDP = loadCdp();
-const DEFAULT_ROOT = path.join('F:', 'ai', 'txt');
+let CDP;
+function getCdp() {
+  if (!CDP) CDP = loadCdp();
+  return CDP;
+}
+const DEFAULT_ROOT = fs.existsSync('/home/admin/ai/txt') ? '/home/admin/ai/txt' : path.join('F:', 'ai', 'txt');
 const DEFAULT_PORT = 9223;
+const API_PUBLISH_SCRIPT = '/home/admin/ai/scripts/fanqie-api-publish.js';
+const PORT_ACCOUNT_MAP = {
+  9223: { account: 'account-a', expected: '\u897f\u5927\u6c34\u602a' },
+  9224: { account: 'account-b', expected: '\u6843\u679d\u9192\u9192' },
+  9225: { account: 'account-c', expected: '\u6ce1\u8299\u8f6f\u547c\u547c' }
+};
 const U = {
   newDraft: '\\u65b0\\u5efa\\u8349\\u7a3f',
   saveDraft: '\\u5b58\\u8349\\u7a3f',
@@ -35,7 +45,8 @@ function usage() {
   node fanqie-upload.js scan --book <book-dir-or-name> [--root F:\\ai\\txt] [--from N] [--to N]
   node fanqie-upload.js drafts --book <book-dir-or-name> --book-id <id> [--port 9223] [--from N] [--to N]
   node fanqie-upload.js repair --book <book-dir-or-name> --book-id <id> [--port 9223] [--from N] [--to N]
-  node fanqie-upload.js publish --book <book-dir-or-name> --book-id <id> [--port 9223] [--from N] [--to N] [--limit N]
+  node fanqie-upload.js repair-href --book <book-dir-or-name> --book-id <id> --href <edit-url> [--port 9223] [--from N] [--to N]
+  node fanqie-upload.js publish --book <book-dir-or-name> --book-id <id> [--account account-a] [--expected-account 西大水怪] [--port 9223] [--from N] [--to N]
   node fanqie-upload.js all --book <book-dir-or-name> --book-id <id> [--port 9223] [--from N] [--to N]
 `);
 }
@@ -80,7 +91,7 @@ function parseChapter(file) {
     no,
     padded: String(no).padStart(3, '0'),
     title,
-    shortTitle: title.replace(/^第\s*0*\d+\s*章\s*/, '').trim(),
+    shortTitle: title.replace(/^第\s*0*\d+\s*章[\s._-]*/, '').trim(),
     body,
     bodyChars: body.trim().length,
     file
@@ -101,15 +112,35 @@ function fullChapterTitle(chapter) {
   return `第${chapter.padded}章 ${chapter.shortTitle}`;
 }
 
+function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function bodyToHtml(body) {
+  return normalize(body)
+    .trim()
+    .split(/\n\s*\n+/)
+    .map(part => part.trim())
+    .filter(Boolean)
+    .map(part => `<p>${escapeHtml(part).replace(/\n/g, '<br>')}</p>`)
+    .join('');
+}
+
 function draftBoxUrl(bookId, bookDir, type = 2) {
   return `https://fanqienovel.com/main/writer/chapter-manage/${bookId}&${encodeURIComponent(path.basename(bookDir))}?type=${type}`;
 }
 
 async function connect(port) {
-  const targets = await CDP.List({ port });
+  const cdp = getCdp();
+  const targets = await cdp.List({ port });
   const target = targets.find(item => item.type === 'page' && item.url.includes('fanqienovel.com')) || targets.find(item => item.type === 'page');
   if (!target) throw new Error(`No Chrome page found on CDP port ${port}`);
-  const client = await CDP({ port, target });
+  const client = await cdp({ port, target });
   client.Page.javascriptDialogOpening(async () => {
     try {
       await client.Page.handleJavaScriptDialog({ accept: true });
@@ -205,8 +236,152 @@ async function clickText(Runtime, Input, escaped, options = {}) {
   return true;
 }
 
+async function clickDialogButton(Runtime, text) {
+  const result = await Runtime.evaluate({ returnByValue: true, awaitPromise: true, userGesture: true, expression: `(() => {
+    const needle = ${JSON.stringify(text)};
+    const roots = [...document.querySelectorAll('.arco-modal,[role="dialog"],.arco-drawer')]
+      .filter(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length));
+    for (const root of roots) {
+      const buttons = [...root.querySelectorAll('button,[role="button"],label')]
+        .filter(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length) && !el.disabled)
+        .map(el => ({ el, value: (el.innerText || el.textContent || '').trim() }))
+        .filter(item => item.value);
+      const exact = buttons.find(item => item.value === needle);
+      const partial = buttons.find(item => item.value.includes(needle));
+      const button = (exact || partial)?.el;
+      if (button) {
+        button.focus();
+        const events = ['pointerover', 'pointerenter', 'mouseover', 'mouseenter', 'pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'];
+        for (const type of events) {
+          const event = type.startsWith('pointer')
+            ? new PointerEvent(type, {
+                bubbles: true,
+                cancelable: true,
+                pointerId: 1,
+                pointerType: 'mouse',
+                isPrimary: true,
+                button: 0,
+                buttons: type.endsWith('down') ? 1 : 0
+              })
+            : new MouseEvent(type, {
+                bubbles: true,
+                cancelable: true,
+                button: 0,
+                buttons: type.endsWith('down') ? 1 : 0
+              });
+          button.dispatchEvent(event);
+        }
+        button.click();
+        return true;
+      }
+    }
+    return false;
+  })()` });
+  return result.result.value;
+}
+
 async function pageText(Runtime, limit = 8000) {
   return await evalv(Runtime, `document.body ? document.body.innerText.slice(0, ${limit}) : ''`);
+}
+
+async function visibleDialogText(Runtime, limit = 2500) {
+  return await evalv(Runtime, `([...document.querySelectorAll('.arco-modal,[role="dialog"],.arco-message,.arco-notification')]
+    .filter(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length))
+    .map(el => (el.innerText || '').trim())
+    .filter(Boolean)
+    .join('\\n---\\n') || (document.body ? document.body.innerText : '')).slice(0, ${limit})`);
+}
+
+async function advancePublishStep(Runtime, aiUse) {
+  const result = await Runtime.evaluate({ returnByValue: true, awaitPromise: true, userGesture: true, expression: `(() => {
+    const visible = el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+    const dialogRoots = [...document.querySelectorAll('.arco-modal,[role="dialog"],.arco-drawer,.arco-message,.arco-notification')]
+      .filter(visible);
+    const dialogText = dialogRoots.map(el => (el.innerText || '').trim()).filter(Boolean).join('\\n---\\n');
+    const bodyText = document.body ? document.body.innerText : '';
+    const text = dialogText || bodyText;
+    const allText = [dialogText, bodyText].filter(Boolean).join('\\n---\\n');
+    const clickInDialogs = needle => {
+      const roots = dialogRoots.length ? dialogRoots : [];
+      roots.push(document);
+      const robustClick = el => {
+        el.focus?.();
+        for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
+          const event = typeof PointerEvent !== 'undefined' && type.startsWith('pointer')
+            ? new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse', isPrimary: true, button: 0, buttons: type.endsWith('down') ? 1 : 0 })
+            : new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, buttons: type.endsWith('down') ? 1 : 0 });
+          el.dispatchEvent(event);
+        }
+        el.click?.();
+      };
+      for (const root of roots) {
+        const items = [...root.querySelectorAll('button,[role="button"],label,span,div')]
+          .filter(el => visible(el) && !el.disabled)
+          .map(el => ({ el, value: (el.innerText || el.textContent || '').trim() }))
+          .filter(item => item.value);
+        const exact = items.find(item => item.value === needle);
+        const partial = items.find(item => item.value.includes(needle));
+        const item = exact || partial;
+        if (item) {
+          robustClick(item.el);
+          return item.value;
+        }
+      }
+      return '';
+    };
+    const clickLabel = needle => {
+      const items = [...document.querySelectorAll('label,button,[role="button"]')]
+        .filter(el => visible(el) && !el.disabled)
+        .map(el => ({ el, value: (el.innerText || el.textContent || '').trim() }))
+        .filter(item => item.value);
+      const item = items.find(item => item.value === needle) || items.find(item => item.value.includes(needle));
+      if (!item) return '';
+      item.el.focus?.();
+      item.el.click?.();
+      return item.value;
+    };
+    if (allText.includes(${JSON.stringify(U.dailyLimit)})) return { status: 'daily-limit', text: text.slice(0, 300) };
+    if (location.href.includes('chapter-manage')) return { status: 'submitted', text: text.slice(0, 300) };
+    if (allText.includes('这里可以设置分卷') || document.querySelector('.publish-tour-guide,.reactour__helper')) {
+      for (const el of [...document.querySelectorAll('.reactour__helper,.reactour__mask,.publish-tour-guide,.publish-guide,[class*=reactour]')]) el.remove();
+      const next = [...document.querySelectorAll('button.publish-button,button')]
+        .find(el => visible(el) && !el.disabled && ((el.innerText || el.textContent || '').trim()) === ${JSON.stringify(U.next)});
+      if (next) {
+        next.click();
+        return { status: 'tour-next-clicked', clicked: ${JSON.stringify(U.next)}, text: text.slice(0, 500) };
+      }
+      return { status: 'tour-visible', text: text.slice(0, 500) };
+    }
+    if (allText.includes(${JSON.stringify(U.confirmPublish)})) {
+      const ai = ${JSON.stringify(aiUse === 'no' ? U.no : U.yes)};
+      const label = clickLabel(ai);
+      const clicked = clickInDialogs(${JSON.stringify(U.confirmPublish)});
+      return { status: clicked ? 'confirm-clicked' : 'confirm-visible', clicked, label, text: text.slice(0, 500) };
+    }
+    if (allText.includes('是否进行内容风险检测')) {
+      const clicked = clickInDialogs('确定');
+      return { status: clicked ? 'risk-confirm-clicked' : 'risk-confirm-visible', clicked, text: text.slice(0, 500) };
+    }
+    if (allText.includes('错别字未修改')) {
+      const clicked = clickInDialogs(${JSON.stringify(U.submit)});
+      const buttons = [...document.querySelectorAll('button,[role="button"],label')]
+        .filter(el => visible(el) && !el.disabled)
+        .map(el => (el.innerText || el.textContent || '').trim())
+        .filter(Boolean)
+        .slice(-12);
+      return { status: clicked ? 'typo-clicked' : 'typo-visible', clicked, buttons, text: text.slice(0, 500) };
+    }
+    if (allText.includes(${JSON.stringify(U.basic)})) {
+      const clicked = clickInDialogs(${JSON.stringify(U.basic)});
+      return { status: clicked ? 'basic-clicked' : 'basic-visible', clicked, text: text.slice(0, 500) };
+    }
+    if (allText.includes(${JSON.stringify(U.submit)})) {
+      const clicked = clickInDialogs(${JSON.stringify(U.submit)});
+      return { status: clicked ? 'submit-clicked' : 'submit-visible', clicked, text: text.slice(0, 500) };
+    }
+    return { status: 'waiting', text: text.slice(0, 500) };
+  })()` });
+  return result.result.value;
 }
 
 async function getVisibleChapterState(Runtime) {
@@ -248,8 +423,10 @@ async function fillChapterMeta(Runtime, Input, chapter) {
 }
 
 async function fillChapterBody(Runtime, Input, chapter) {
+  const html = bodyToHtml(chapter.body);
   const point = await evalv(Runtime, `(() => {
-    const editor = document.querySelector('.ProseMirror,[contenteditable="true"]');
+    const editor = [...document.querySelectorAll('.ProseMirror,[contenteditable="true"]')]
+      .find(el => el.getBoundingClientRect().width > 500) || document.querySelector('.ProseMirror,[contenteditable="true"]');
     if (!editor) return null;
     const r = editor.getBoundingClientRect();
     return { x: r.left + r.width / 2, y: r.top + Math.min(40, r.height / 2) };
@@ -259,21 +436,28 @@ async function fillChapterBody(Runtime, Input, chapter) {
     await Input.dispatchMouseEvent({ type, x: point.x, y: point.y, button: 'left', clickCount: 1 });
   }
   await sleep(300);
+  await Input.dispatchKeyEvent({ type: 'keyDown', key: 'Control', code: 'ControlLeft', windowsVirtualKeyCode: 17, modifiers: 2 });
+  await Input.dispatchKeyEvent({ type: 'keyDown', key: 'a', code: 'KeyA', windowsVirtualKeyCode: 65, modifiers: 2 });
+  await Input.dispatchKeyEvent({ type: 'keyUp', key: 'a', code: 'KeyA', windowsVirtualKeyCode: 65, modifiers: 2 });
+  await Input.dispatchKeyEvent({ type: 'keyUp', key: 'Control', code: 'ControlLeft' });
+  await Input.dispatchKeyEvent({ type: 'keyDown', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 });
+  await Input.dispatchKeyEvent({ type: 'keyUp', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 });
+  await sleep(300);
   const inserted = await evalv(Runtime, `(() => {
-    const editor = document.querySelector('.ProseMirror,[contenteditable="true"]');
+    const editor = [...document.querySelectorAll('.ProseMirror,[contenteditable="true"]')]
+      .find(el => el.getBoundingClientRect().width > 500) || document.querySelector('.ProseMirror,[contenteditable="true"]');
     editor.focus();
-    editor.innerHTML = '<p></p>';
-    editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward', data: null }));
+    editor.innerHTML = ${JSON.stringify(html)};
+    editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertFromPaste', data: null }));
     editor.dispatchEvent(new Event('change', { bubbles: true }));
-    const data = new DataTransfer();
-    data.setData('text/plain', ${JSON.stringify(chapter.body.trim() + '\n')});
-    editor.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: data }));
-    editor.dispatchEvent(new Event('change', { bubbles: true }));
-    return { chars: editor.innerText.trim().length };
+    return { chars: editor.innerText.trim().length, paragraphs: editor.querySelectorAll('p').length, html: editor.innerHTML.slice(0, 500) };
   })()`);
   await sleep(500);
   if (!inserted || inserted.chars < Math.min(500, chapter.bodyChars)) {
     throw new Error(`Body paste failed: ${JSON.stringify(inserted)}`);
+  }
+  if (inserted.paragraphs < 2 && chapter.body.trim().split(/\n\s*\n+/).filter(Boolean).length >= 2) {
+    throw new Error(`Body paste paragraph verification failed: ${JSON.stringify(inserted)}`);
   }
   return inserted.chars;
 }
@@ -381,6 +565,27 @@ async function collectDraftRows(Runtime, Page, bookId, bookDir) {
         return title && match && href ? { no: Number(match[1]), title, words: Number(cells[1] || 0), href } : null;
       })
       .filter(Boolean))()`);
+    const linkRows = await evalv(Runtime, `(() => {
+      const anchors = [...document.querySelectorAll('a')].map(a => ({
+        text: (a.innerText || a.textContent || '').trim(),
+        href: a.href || ''
+      }));
+      const out = [];
+      for (let i = 0; i < anchors.length; i++) {
+        const match = anchors[i].text.match(/第\\s*0*(\\d+)\\s*章[^\\n\\t]*/);
+        if (!match) continue;
+        const edit = anchors.slice(i + 1, i + 5)
+          .find(item => item.href.includes('/publish/') && item.href.includes('modifydraft'));
+        if (!edit) continue;
+        out.push({
+          no: Number(match[1]),
+          title: anchors[i].text,
+          words: 0,
+          href: edit.href
+        });
+      }
+      return out;
+    })()`);
     const divRows = await evalv(Runtime, `(() => {
       const out = [];
       for (const row of [...document.querySelectorAll('tr, [class*="table"] [class*="row"], div')]) {
@@ -396,7 +601,7 @@ async function collectDraftRows(Runtime, Page, bookId, bookDir) {
       }
       return out;
     })()`);
-    rows.push(...current, ...divRows);
+    rows.push(...current, ...linkRows, ...divRows);
     const clicked = await evalv(Runtime, `(() => {
       const next = [...document.querySelectorAll('li')]
         .find(el => el.getAttribute('aria-label') === '下一页' && !String(el.className).includes('disabled'));
@@ -450,6 +655,17 @@ async function commandRepair(bookDir, bookId, chapters, port) {
   }
 }
 
+async function commandRepairHref(chapters, port, href) {
+  if (!href) throw new Error('--href is required for repair-href');
+  if (chapters.length !== 1) throw new Error('repair-href requires exactly one chapter; set --from and --to to the same number');
+  const client = await connect(port);
+  try {
+    await repairDraft(client, href, chapters[0]);
+  } finally {
+    await client.close();
+  }
+}
+
 async function draftLinks(Runtime) {
   return await evalv(Runtime, `(() => {
     const rows = [...document.querySelectorAll('tr, .byte-table-tr, [class*="table"] [class*="row"], div')]
@@ -467,7 +683,9 @@ async function draftLinks(Runtime) {
 
 async function publishOne(client, href, chapter, options = {}) {
   const { Runtime, Input, Page } = client;
+  console.log(`TRY ${fullChapterTitle(chapter)}`);
   await navigate(Page, href);
+  console.log(`OPEN ${fullChapterTitle(chapter)}`);
   await clickText(Runtime, Input, U.continueEditing, { wait: 1000 });
   await waitFor(Runtime, `([...document.querySelectorAll('button,[role="button"],a')]
     .some(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
@@ -485,40 +703,39 @@ async function publishOne(client, href, chapter, options = {}) {
     return true;
   })()`);
   if (!nextClicked && !await clickText(Runtime, Input, U.next, { wait: 2500 })) throw new Error(`Cannot click next for ${fullChapterTitle(chapter)}`);
-  const checkDeadline = Date.now() + 90000;
+  console.log(`NEXT ${fullChapterTitle(chapter)}`);
+  const checkDeadline = Date.now() + 180000;
+  let lastStep = null;
   while (Date.now() < checkDeadline) {
-    if (await hasText(Runtime, U.confirmPublish)) break;
-    if (await hasText(Runtime, U.basic)) {
-      await clickText(Runtime, Input, U.basic, { wait: 3500 });
-      continue;
-    }
-    await clickText(Runtime, Input, U.submit, { wait: 1800 });
+    const step = await advancePublishStep(Runtime, options.aiUse);
+    lastStep = step;
+    if (step.status !== 'waiting') console.log(`STEP ${chapter.padded} ${step.status}${step.clicked ? ` ${step.clicked}` : ''}`);
+    if (step.status === 'daily-limit') return { status: 'daily-limit' };
+    if (step.status === 'submitted') return { status: 'submitted' };
+    await sleep(step.status === 'confirm-clicked' ? 5000 : 2500);
   }
-  await waitFor(Runtime, `document.body.innerText.includes('${U.confirmPublish}')`, 15000, 'confirm publish dialog');
-  await clickText(Runtime, Input, options.aiUse === 'no' ? U.no : U.yes, { label: true, maxX: 1000, wait: 700 });
-  for (let i = 0; i < 5; i++) {
-    await clickText(Runtime, Input, U.submit, { wait: 800 });
-    await clickText(Runtime, Input, U.confirmPublish, { wait: 5000 });
-    if (await hasText(Runtime, U.dailyLimit)) return { status: 'daily-limit' };
-    const url = await evalv(Runtime, 'location.href');
-    if (url.includes('chapter-manage')) return { status: 'submitted' };
-  }
-  if (await hasText(Runtime, U.dailyLimit)) return { status: 'daily-limit' };
-  throw new Error(`Publish confirmation did not complete for ${fullChapterTitle(chapter)}`);
+  throw new Error(`Publish confirmation did not complete for ${fullChapterTitle(chapter)}. Last step: ${JSON.stringify(lastStep)}`);
 }
 
 async function commandPublish(bookDir, bookId, chapters, port, options = {}) {
+  console.log('PUBLISH_SCRIPT_VERSION 20260616-2344');
   const wanted = new Map(chapters.map(chapter => [chapter.padded, chapter]));
   const client = await connect(port);
   const { Runtime, Page } = client;
   let publishedCount = 0;
   try {
-    await navigate(Page, draftBoxUrl(bookId, bookDir, 2));
-    const links = (await draftLinks(Runtime)).filter(item => wanted.has(String(item.no).padStart(3, '0')));
+    const rows = await collectDraftRows(Runtime, Page, bookId, bookDir);
+    const links = chapters
+      .map(chapter => {
+        const row = rows.get(chapter.padded);
+        return row ? { no: chapter.no, title: row.title, href: row.href } : null;
+      })
+      .filter(Boolean);
     if (!links.length) {
       console.log('No matching drafts found.');
       return;
     }
+    console.log(`DRAFT_ROWS ${links.map(link => String(link.no).padStart(3, '0')).join(',')}`);
     for (const link of links) {
       const chapter = wanted.get(String(link.no).padStart(3, '0'));
       const result = await publishOne(client, link.href, chapter, options);
@@ -537,6 +754,30 @@ async function commandPublish(bookDir, bookId, chapters, port, options = {}) {
   }
 }
 
+function commandPublishApi(bookDir, bookId, from, to, port, options = {}) {
+  if (!fs.existsSync(API_PUBLISH_SCRIPT)) {
+    throw new Error(`API publish script not found: ${API_PUBLISH_SCRIPT}`);
+  }
+  const mapped = PORT_ACCOUNT_MAP[port] || {};
+  const account = options.account || mapped.account;
+  const expectedAccount = options.expectedAccount || mapped.expected;
+  if (!account || !expectedAccount) {
+    throw new Error('--account and --expected-account are required when --port is not 9223/9224/9225');
+  }
+  const args = [
+    API_PUBLISH_SCRIPT,
+    '--account', account,
+    '--expected-account', expectedAccount,
+    '--book', path.basename(bookDir),
+    '--book-id', bookId,
+    '--ai-use', options.aiUse || 'yes',
+    '--from', String(from),
+    '--to', String(to)
+  ];
+  console.log(`PUBLISH_API ${account} ${expectedAccount} ${path.basename(bookDir)}`);
+  execFileSync('node', args, { stdio: 'inherit' });
+}
+
 async function main() {
   const [command, ...args] = process.argv.slice(2);
   if (!command || command === '-h' || command === '--help') {
@@ -551,6 +792,9 @@ async function main() {
   const bookId = argValue(args, '--book-id', '');
   const aiUse = argValue(args, '--ai-use', 'yes');
   const limit = Number(argValue(args, '--limit', '0'));
+  const account = argValue(args, '--account', '');
+  const expectedAccount = argValue(args, '--expected-account', '');
+  const href = argValue(args, '--href', '');
   const chapters = loadChapters(bookDir, from, to);
   if (!chapters.length) throw new Error(`No chapters found in ${bookDir}`);
 
@@ -558,10 +802,12 @@ async function main() {
   if (!bookId) throw new Error('--book-id is required for drafts/publish/all');
   if (command === 'drafts') return commandDrafts(bookDir, bookId, chapters, port);
   if (command === 'repair') return commandRepair(bookDir, bookId, chapters, port);
-  if (command === 'publish') return commandPublish(bookDir, bookId, chapters, port, { aiUse, limit });
+  if (command === 'repair-href') return commandRepairHref(chapters, port, href);
+  if (command === 'publish') return commandPublishApi(bookDir, bookId, from, to, port, { aiUse, account, expectedAccount, limit });
+  if (command === 'publish-cdp') return commandPublish(bookDir, bookId, chapters, port, { aiUse, limit });
   if (command === 'all') {
     await commandDrafts(bookDir, bookId, chapters, port);
-    await commandPublish(bookDir, bookId, chapters, port, { aiUse });
+    commandPublishApi(bookDir, bookId, from, to, port, { aiUse, account, expectedAccount });
     return;
   }
   throw new Error(`Unknown command: ${command}`);

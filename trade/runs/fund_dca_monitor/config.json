@@ -1,0 +1,88 @@
+{
+  "salary_day": 10,
+  "tranches": [
+    {
+      "id": "T1",
+      "label": "工资后第一笔",
+      "start_day": 10,
+      "end_day": 16,
+      "amount": 1000.0
+    },
+    {
+      "id": "T2",
+      "label": "月中第二笔",
+      "start_day": 20,
+      "end_day": 26,
+      "amount": 1000.0
+    }
+  ],
+  "reminder_hour": 14,
+  "reminder_minute": 30,
+  "cash_asset": "零钱宝",
+  "cash_balance": 10022.68,
+  "cash_floor": 6000.0,
+  "cash_reduce_threshold": 6500.0,
+  "cash_full_threshold": 8000.0,
+  "monthly_base_amount": 2000.0,
+  "defer_if_022430_up_pct": 1.5,
+  "execute_if_022430_down_pct": -1.0,
+  "feedback_base_url": "http://8.212.144.72:8090",
+  "feedback_token_path": "/home/admin/ai/output/qr-login/renminwang.token",
+  "funds": {
+    "009052": {
+      "name": "易方达中证红利ETF联接发起式C",
+      "display_name": "009052 红利",
+      "value": 17007.91,
+      "profit": -1343.57,
+      "cost": 18351.48,
+      "shares": 14825.58403068,
+      "daily_profit": 194.89,
+      "account_updated_at": "2026-06-30",
+      "target_weight": 0.0
+    },
+    "022430": {
+      "name": "华夏中证A500ETF联接A",
+      "display_name": "022430 中正500",
+      "value": 10352.0,
+      "profit": 352.0,
+      "cost": 10000.0,
+      "shares": 7811.06164642,
+      "daily_profit": 151.31,
+      "account_updated_at": "2026-06-30",
+      "target_weight": 1.0
+    }
+  },
+  "qdii_funds": {
+    "017091": {
+      "name": "景顺长城纳斯达克科技ETF联接(QDII)A人民币",
+      "display_name": "017091 景顺纳指科技A",
+      "value": 35232.37,
+      "profit": 5932.37,
+      "cost": 29300.0,
+      "shares": 12706.88137916,
+      "daily_profit": -415.36,
+      "holding_return": "21.33%",
+      "account_updated_at": "2026-06-30"
+    },
+    "017093": {
+      "name": "景顺长城纳斯达克科技ETF联接(QDII)C人民币",
+      "display_name": "017093 景顺纳指科技C",
+      "value": 14308.71,
+      "profit": 2308.73,
+      "cost": 11999.98,
+      "shares": 5239.55838734,
+      "daily_profit": -169.16,
+      "account_updated_at": "2026-06-30"
+    },
+    "019118": {
+      "name": "景顺长城纳斯达克科技ETF联接(QDII)E人民币",
+      "display_name": "019118 景顺纳指科技E",
+      "value": 11508.15,
+      "profit": 1908.15,
+      "cost": 9600.0,
+      "shares": 4178.0968632,
+      "daily_profit": -135.31,
+      "account_updated_at": "2026-06-30"
+    }
+  }
+}

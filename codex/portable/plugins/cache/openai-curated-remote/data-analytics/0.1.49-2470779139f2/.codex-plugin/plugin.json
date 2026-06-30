@@ -1,0 +1,66 @@
+{
+  "name": "data-analytics",
+  "version": "0.1.49-2470779139f2",
+  "description": "Analyze product usage, investigate metric movements, prepare KPI reports, build high-quality dashboards and notebooks, create source-backed semantic layers, guide task-oriented data flows, and generate analytics-grade report apps.",
+  "author": {
+    "name": "Data Analytics Maintainers"
+  },
+  "homepage": "https://openai.com/",
+  "repository": "",
+  "license": "Proprietary",
+  "keywords": [
+    "data-analytics",
+    "analytics",
+    "business-context",
+    "dashboards",
+    "funnel-analysis",
+    "kpi-reporting",
+    "market-sizing",
+    "metric-diagnostics",
+    "post-launch-updates",
+    "product-analysis",
+    "retention",
+    "root-cause-analysis",
+    "scorecards",
+    "validation",
+    "visualization",
+    "jupyter-notebooks",
+    "databricks",
+    "bigquery",
+    "snowflake",
+    "deepnote",
+    "mixpanel",
+    "mixpanel-headless",
+    "metabase",
+    "thoughtspot",
+    "guided-flow",
+    "semantic-layer"
+  ],
+  "skills": "./skills/",
+  "apps": "./.app.json",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Data Analytics",
+    "shortDescription": "Turn data into clear decisions",
+    "longDescription": "Turn analytical questions into validated answers, dashboards, reports, notebooks, and clear recommendations. Explore product and business data, explain why key metrics changed, design KPIs, size opportunities, check data quality, and create explicit reusable metric or source context when requested.\n\nStart with connected warehouses, BI tools, product analytics, docs, chat, spreadsheets, or uploaded files. Guided flows help you choose and run task-oriented data work with useful connectors, uploaded or pasted data, or demo data, while interactive charts, tables, dashboards, and report apps keep the evidence reviewable and ready to share.",
+    "developerName": "OpenAI",
+    "category": "Data & Analytics",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://openai.com/",
+    "privacyPolicyURL": "https://openai.com/policies/privacy-policy/",
+    "termsOfServiceURL": "https://openai.com/policies/terms-of-use/",
+    "defaultPrompt": [
+      "Help me get started with my first data task",
+      "Analyze product usage and recommend where the team should focus next",
+      "Diagnose why a key metric changed and identify the biggest drivers"
+    ],
+    "brandColor": "#0285FF",
+    "composerIcon": "./assets/datascience-small.svg",
+    "logo": "./assets/datascience.png",
+    "screenshots": []
+  }
+}
