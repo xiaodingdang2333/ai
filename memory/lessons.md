@@ -25,3 +25,12 @@
 - 2026-06-28: 女频快穿言情开篇不能只用“男主帮女主解决问题”代替感情线。对照番茄女频快穿榜样本时，榜文是否先铺大量背景并不统一，但都会持续保持主角的情感视角，让读者知道她为何在意、如何被触动、为何想靠近。写轻松甜宠和明确偏爱时，应减少职业流程、规则谈判和多人往返对话，让每章至少出现一次双向情绪变化；背景优先补人物的情感来历而非设定说明，男主偏爱要明显超出职责，女主也要看见并回应他的需要。不要机械堆表情词或心理词，动作、表情和内心必须共同推进关系。
 - 2026-06-28: 快穿1v1言情里，男主不必第一章就真人长时间在场，但必须从第一章成为情绪中心，可通过旧识、青梅、通信、照片、语音或共同任务制造期待。相爱应至少经过“已有连接或注意—重复互动—可靠性验证—特殊优先级—自觉心动—关系确认”，不能把一次帮助直接跳写成爱情，也不要在初次见面当天让双方无铺垫认定喜欢。为避免传统青梅套路，可让职业机制承担前史，例如先通过四个月语音协作熟悉彼此，再把线上默契转成现实靠近。
 - 2026-06-28: Fanqie chapter filenames in the form `第001章_标题.md` require the uploader to strip separators after `章`; otherwise `_` is uploaded as part of the title. Use `^第\s*0*\d+\s*章[\s._-]*` when deriving `shortTitle`. If an interrupted upload leaves a zero-word unnamed draft, remove only that confirmed artifact, repair existing titled drafts in place, and verify the final draft list has continuous numbers, nonzero counts, and no underscore titles.
+- 2026-07-01: GPT Action 的长任务查询不能把全部拆书正文塞进终态响应。市场任务默认只返回状态、有效数量、书名、跳过原因和样本序号；抽样正文按单本、每页最多2段由独立 Action 读取，GPT 内部分析后只向用户汇报综合结论。实测将终态从约57KB降至约3.5KB，正文页约13至14KB。
+- 2026-07-02: `novel-actions.service`以`admin`运行，而Snap Chromium账号缓存位于`/root/snap/chromium/common`。后台绑定/上传流程中的缓存`switch-start`与`save`必须使用`sudo -n fanqie-account-cache.sh ...`，systemd单元需设`NoNewPrivileges=false`，否则sudo必然失败；账号、端口仍由服务端白名单固定，账号识别、找书和上传保持普通用户执行。不要放宽`/root`权限。
+- 2026-07-02: 番茄作品管理页在低配服务器上可能长时间才渲染作品链接；绑定脚本应轮询`a[href*="/chapter-manage/"]`至出现（上限60秒，30秒时无缓存刷新一次），不能固定短等待后把空候选误报为作品不存在。
+- 2026-07-02: 番茄账号核验页也会慢加载；`identify`应最长轮询30秒，并且只接受问候语昵称或页面中唯一出现的白名单笔名。未明确识别仍返回`UNKNOWN`并阻止上传，不能为了成功率跳过账号校验。
+- 2026-07-02: GPT提交的章节标题可能已含`第XXX章`，而本地文件名和番茄编辑器会自行加章号。服务器保存前及上传器解析时都要剥离一个或多个重复章号前缀，避免生成`第001章 第001章 标题`并导致草稿验收超时。
+- 2026-07-02: 低配服务器运行Snap Chromium番茄编辑器时应限制为单渲染进程、关闭扩展、限制JS堆和磁盘缓存；首次新书草稿优先逐章上传并逐章验收，出现不可中断I/O或持续高CPU时停止任务，绝不盲目并发或重复上传。
+- 2026-07-02: 番茄root上传包装器只有在账号核验为预期笔名后才能保存账号缓存；`LOGIN_REQUIRED`、`UNKNOWN`或账号不符时只关闭浏览器，禁止把失效/错误登录覆盖回备份。
+- 2026-07-02: 番茄草稿最终验收必须与上传器使用同一个`/api/author/chapter/draft_list/v1`数据源，不能依赖慢加载网页表格；失败信息必须返回匹配数量、实际标题、字数和item_id，重复章不得用Map按章号静默折叠。
+- 2026-07-02: `fanqie-upload.js drafts`内部已经通过草稿API校验重复项、标题和保存正文；root包装器不得在同一重页面会话后再调用第二套列表验收，否则容易因页面Runtime卡死把成功上传误判失败。独立列表脚本只用于故障诊断。

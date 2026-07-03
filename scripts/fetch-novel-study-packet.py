@@ -82,7 +82,9 @@ def chapter_links(base_url, source):
         if not title or title in {"首页", "上一章", "下一章", "章节目录"}:
             continue
         url = urllib.parse.urljoin(base_url, href)
-        if re.search(r"/biqu\d+/\d+\.html$", urllib.parse.urlparse(url).path):
+        chapter_path = urllib.parse.urlparse(url).path
+        if (re.search(r"/biqu\d+/\d+\.html$", chapter_path)
+                or re.search(r"/\d+/\d+\.html$", chapter_path)):
             links.append((title, url))
     return links
 
@@ -136,7 +138,7 @@ def main():
                 seen.add(url)
     links.sort(key=chapter_number)
     if not links:
-        raise SystemExit("No chapter links found; this selective downloader currently supports the 22biqu rule")
+        raise SystemExit("No supported chapter links found in the mirror table of contents")
 
     output = args.output or Path("/home/admin/ai/txt/排行榜/拆书分析") / safe_name(args.title)
     selected_dir = output / "selected"

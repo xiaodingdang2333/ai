@@ -17,7 +17,20 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
     const { Page, Runtime } = client;
     await Page.enable();
     await Page.navigate({ url: 'https://fanqienovel.com/main/writer/book-manage' });
-    await sleep(5000);
+    const deadline = Date.now() + 60000;
+    let refreshed = false;
+    while (Date.now() < deadline) {
+      const ready = await Runtime.evaluate({
+        returnByValue: true,
+        expression: `document.querySelectorAll('a[href*="/chapter-manage/"]').length`
+      });
+      if (Number(ready.result.value || 0) > 0) break;
+      if (!refreshed && Date.now() > deadline - 30000) {
+        await Page.reload({ignoreCache: true});
+        refreshed = true;
+      }
+      await sleep(1000);
+    }
     const result = await Runtime.evaluate({
       returnByValue: true,
       expression: `(() => [...document.querySelectorAll('a[href*="/chapter-manage/"]')]

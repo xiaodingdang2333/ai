@@ -1,19 +1,9 @@
-# Claude Instructions
+# Claude Code Workspace Instructions
 
-## Shared Memory
+This repository is the authoritative shared AI workspace.
 
-At the start of every new conversation/session, read the shared memory index at `./memory/README.md` from the current repository/workspace root, then read `user-profile.md` and `workflow-preferences.md`.
+Before any task, read `memory/README.md`, `memory/user-profile.md`, and `memory/workflow-preferences.md`.
 
-Also read `project-context.md`, `lessons.md`, `decisions.md`, or dated `sessions/` notes only when relevant to the user's request.
+For any novel ideation, planning, writing, revision, evaluation, continuation, packaging, or upload task, you MUST first read `memory/novel-writing-workflow.md` and all stage-specific files it requires. Treat ranking-source fallback, the eight-part originality gate, 12-to-3 selection, trial approval, continuity tracking, QA, account checks, and upload policy as hard gates.
 
-If `./memory` is not present, fall back to `F:\ai\memory` when available.
-
-Use `./memory` as the shared long-term memory layer across AI tools so the behavior survives pulling this directory on a new computer. When the user says "记住", "以后都这样", "总结经验", asks to record shared memory, or gives a durable correction/preference, update the relevant memory file.
-
-Do not store secrets, passwords, tokens, API keys, or sensitive personal data unless explicitly requested.
-
-## Working Style
-
-- Prefer concise Chinese responses unless the user asks otherwise.
-- Prefer doing clear local tasks over only explaining.
-- Minimize token usage while preserving correctness.
+If Claude Code does not automatically discover repository skills, read and execute the relevant `codex/skills/*/SKILL.md` directly. Repository rules override chat memory and remain mandatory after account or server migration.

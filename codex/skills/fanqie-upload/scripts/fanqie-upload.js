@@ -39,11 +39,13 @@ const U = {
   published: '\\u5df2\\u53d1\\u5e03',
   auditing: '\\u5ba1\\u6838\\u4e2d'
 };
+const SAVE_DRAFT_LABELS = [U.saveDraft, '\\u5b58\\u8349\\u7a3f'];
 
 function usage() {
   console.log(`Usage:
   node fanqie-upload.js scan --book <book-dir-or-name> [--root F:\\ai\\txt] [--from N] [--to N]
-  node fanqie-upload.js drafts --book <book-dir-or-name> --book-id <id> [--port 9223] [--from N] [--to N]
+  node fanqie-upload.js drafts --book <book-dir-or-name> --book-id <id> [--port 9223] [--expected-account NAME] [--from N] [--to N]
+  node fanqie-upload.js verify --book <book-dir-or-name> --book-id <id> [--port 9223] [--expected-account NAME] [--from N] [--to N]
   node fanqie-upload.js repair --book <book-dir-or-name> --book-id <id> [--port 9223] [--from N] [--to N]
   node fanqie-upload.js repair-href --book <book-dir-or-name> --book-id <id> --href <edit-url> [--port 9223] [--from N] [--to N]
   node fanqie-upload.js publish --book <book-dir-or-name> --book-id <id> [--account account-a] [--expected-account 西大水怪] [--port 9223] [--from N] [--to N]
@@ -91,7 +93,7 @@ function parseChapter(file) {
     no,
     padded: String(no).padStart(3, '0'),
     title,
-    shortTitle: title.replace(/^第\s*0*\d+\s*章[\s._-]*/, '').trim(),
+    shortTitle: title.replace(/^(?:第\s*0*\d+\s*章[\s._-]*)+/, '').trim(),
     body,
     bodyChars: body.trim().length,
     file
@@ -110,6 +112,35 @@ function loadChapters(bookDir, from = 1, to = Number.MAX_SAFE_INTEGER) {
 
 function fullChapterTitle(chapter) {
   return `第${chapter.padded}章 ${chapter.shortTitle}`;
+}
+
+function chapterNumber(title) {
+  const match = String(title || '').match(/第\s*0*(\d+)\s*章/);
+  return match ? Number(match[1]) : 0;
+}
+
+function sourceParagraphCount(chapter) {
+  return normalize(chapter.body).trim().split(/\n\s*\n+/).filter(Boolean).length;
+}
+
+function compactText(text) {
+  return normalize(String(text || '')).replace(/\s+/g, '');
+}
+
+function validateLocalChapters(chapters) {
+  const byNumber = new Map();
+  const byTitle = new Map();
+  for (const chapter of chapters) {
+    if (byNumber.has(chapter.no)) {
+      throw new Error(`Duplicate local chapter number ${chapter.padded}: ${byNumber.get(chapter.no)} and ${chapter.file}`);
+    }
+    const title = fullChapterTitle(chapter);
+    if (byTitle.has(title)) throw new Error(`Duplicate local chapter title: ${title}`);
+    if (!chapter.shortTitle) throw new Error(`Empty local chapter title: ${chapter.file}`);
+    if (!chapter.body.trim()) throw new Error(`Empty local chapter body: ${chapter.file}`);
+    byNumber.set(chapter.no, chapter.file);
+    byTitle.set(title, chapter.file);
+  }
 }
 
 function escapeHtml(text) {
@@ -148,6 +179,17 @@ async function connect(port) {
   });
   await client.Runtime.enable();
   await client.Page.enable();
+  try {
+    await client.Emulation.enable();
+    await client.Emulation.setDeviceMetricsOverride({
+      width: 1600,
+      height: 1200,
+      deviceScaleFactor: 1,
+      mobile: false,
+      screenWidth: 1600,
+      screenHeight: 1200
+    });
+  } catch (_) {}
   return client;
 }
 
@@ -197,6 +239,118 @@ async function navigate(Page, url, waitMs = 4500) {
     active = false;
     await dialogGuard;
   }
+}
+
+async function fetchDraftList(Runtime, bookId) {
+  const result = await evalv(Runtime, `(
+    async () => {
+      const all = [];
+      for (let pageIndex = 0; pageIndex < 10; pageIndex++) {
+        const url = '/api/author/chapter/draft_list/v1?book_id=${bookId}&page_index=' + pageIndex + '&page_count=80';
+        const res = await fetch(url, { credentials: 'include' });
+        const json = await res.json();
+        if (!json || json.code !== 0) return { code: json && json.code, message: json && json.message, draft_list: all };
+        const rows = (json.data && json.data.draft_list) || [];
+        all.push(...rows);
+        const total = Number(json.data && json.data.total_count || 0);
+        if (!rows.length || all.length >= total) break;
+      }
+      return { code: 0, draft_list: all };
+    }
+  )()`);
+  if (!result || result.code !== 0) {
+    throw new Error(`Draft list API failed: ${JSON.stringify(result)}`);
+  }
+  return result;
+}
+
+async function fetchPublishedList(Runtime, bookId) {
+  const result = await evalv(Runtime, `(
+    async () => {
+      const all = [];
+      for (let pageIndex = 0; pageIndex < 50; pageIndex++) {
+        const url = '/api/author/chapter/chapter_list/v1?book_id=${bookId}&page_index=' + pageIndex + '&page_count=80';
+        const res = await fetch(url, { credentials: 'include' });
+        const json = await res.json();
+        if (!json || json.code !== 0) return { code: json && json.code, message: json && json.message, item_list: all };
+        const rows = (json.data && json.data.item_list) || [];
+        all.push(...rows);
+        const total = Number(json.data && json.data.total_count || 0);
+        if (!rows.length || all.length >= total) break;
+      }
+      return { code: 0, item_list: all };
+    }
+  )()`);
+  if (!result || result.code !== 0) {
+    throw new Error(`Published chapter list API failed: ${JSON.stringify(result)}`);
+  }
+  return result;
+}
+
+async function verifyAccount(Runtime, expectedAccount) {
+  if (!expectedAccount) throw new Error('Expected account name is required for draft upload');
+  const result = await evalv(Runtime, `(async () => {
+    const res = await fetch('/api/user/info/v2', { credentials: 'include' });
+    return await res.json();
+  })()`);
+  const actual = result && result.data && result.data.name;
+  if (!result || result.code !== 0 || actual !== expectedAccount) {
+    throw new Error(`Account mismatch or invalid login: expected=${expectedAccount}, actual=${actual || (result && result.message) || 'UNKNOWN'}`);
+  }
+  console.log(`ACCOUNT ${actual}`);
+  return actual;
+}
+
+async function fetchDraftArticle(Runtime, bookId, itemId) {
+  const result = await evalv(Runtime, `(async () => {
+    const url = '/api/author/edit_article/v0/?book_id=${bookId}&item_id=${itemId}&from_source=0';
+    const res = await fetch(url, { credentials: 'include' });
+    const json = await res.json();
+    if (!json || json.code !== 0) return { code: json && json.code, message: json && json.message };
+    const data = json.data || {};
+    const doc = new DOMParser().parseFromString(data.content || '', 'text/html');
+    const paragraphs = [...doc.querySelectorAll('p')];
+    return {
+      code: 0,
+      title: data.title || '',
+      text: doc.body.innerText || doc.body.textContent || '',
+      htmlChars: (data.content || '').length,
+      paragraphs: paragraphs.length,
+      nonEmptyParagraphs: paragraphs.filter(p => (p.innerText || p.textContent || '').trim()).length
+    };
+  })()`);
+  if (!result || result.code !== 0) {
+    throw new Error(`Draft article API failed for item ${itemId}: ${JSON.stringify(result)}`);
+  }
+  return result;
+}
+
+async function verifySavedArticle(Runtime, bookId, row, chapter) {
+  const expectedTitle = fullChapterTitle(chapter);
+  const stats = await fetchDraftArticle(Runtime, bookId, row.item_id);
+  if (stats.title !== expectedTitle) {
+    throw new Error(`Saved title mismatch: expected=${expectedTitle}, actual=${stats.title}`);
+  }
+  const minimumParagraphs = Math.max(2, Math.floor(sourceParagraphCount(chapter) * 0.8));
+  if (stats.nonEmptyParagraphs < minimumParagraphs) {
+    throw new Error(`Saved paragraph mismatch for ${expectedTitle}: expected>=${minimumParagraphs}, actual=${stats.nonEmptyParagraphs}`);
+  }
+  if (compactText(stats.text) !== compactText(chapter.body)) {
+    throw new Error(`Saved body mismatch for ${expectedTitle}: platform content differs from local manuscript`);
+  }
+  const words = Number(row.word_number || row.word_count || row.words || 0);
+  if (!words) throw new Error(`Saved draft has zero words: ${expectedTitle}`);
+  return stats;
+}
+
+async function collectDraftTitles(Runtime, bookId) {
+  const result = await fetchDraftList(Runtime, bookId);
+  const titles = new Set();
+  for (const row of result.draft_list || []) {
+    const title = row.title || row.chapter_title || '';
+    if (title) titles.add(title);
+  }
+  return titles;
 }
 
 async function hasText(Runtime, escaped) {
@@ -278,6 +432,13 @@ async function clickDialogButton(Runtime, text) {
     return false;
   })()` });
   return result.result.value;
+}
+
+async function clickSaveDraft(Runtime, Input, wait = 3500) {
+  for (const label of SAVE_DRAFT_LABELS) {
+    if (await clickText(Runtime, Input, label, { wait })) return true;
+  }
+  return false;
 }
 
 async function pageText(Runtime, limit = 8000) {
@@ -423,7 +584,7 @@ async function fillChapterMeta(Runtime, Input, chapter) {
 }
 
 async function fillChapterBody(Runtime, Input, chapter) {
-  const html = bodyToHtml(chapter.body);
+  const sourceParagraphs = normalize(chapter.body).trim().split(/\n\s*\n+/).filter(Boolean).length;
   const point = await evalv(Runtime, `(() => {
     const editor = [...document.querySelectorAll('.ProseMirror,[contenteditable="true"]')]
       .find(el => el.getBoundingClientRect().width > 500) || document.querySelector('.ProseMirror,[contenteditable="true"]');
@@ -432,6 +593,13 @@ async function fillChapterBody(Runtime, Input, chapter) {
     return { x: r.left + r.width / 2, y: r.top + Math.min(40, r.height / 2) };
   })()`);
   if (!point) throw new Error('Cannot locate chapter editor');
+  await evalv(Runtime, `(() => {
+    const editor = [...document.querySelectorAll('.ProseMirror,[contenteditable="true"]')]
+      .find(el => el.getBoundingClientRect().width > 500) || document.querySelector('.ProseMirror,[contenteditable="true"]');
+    if (!editor) return false;
+    editor.focus();
+    return document.activeElement === editor;
+  })()`);
   for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) {
     await Input.dispatchMouseEvent({ type, x: point.x, y: point.y, button: 'left', clickCount: 1 });
   }
@@ -443,37 +611,194 @@ async function fillChapterBody(Runtime, Input, chapter) {
   await Input.dispatchKeyEvent({ type: 'keyDown', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 });
   await Input.dispatchKeyEvent({ type: 'keyUp', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 });
   await sleep(300);
+  // Insert explicit paragraph HTML in one editor transaction. Simulated Enter
+  // keys are lost when ProseMirror re-renders, and plain insertText may flatten
+  // or truncate paragraphs while modifying an existing draft.
+  const insertedHtml = await evalv(Runtime, `(() => {
+    const editor = [...document.querySelectorAll('.ProseMirror,[contenteditable="true"]')]
+      .find(el => el.getBoundingClientRect().width > 500) || document.querySelector('.ProseMirror,[contenteditable="true"]');
+    if (!editor) return false;
+    editor.focus();
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    const ok = document.execCommand('insertHTML', false, ${JSON.stringify(bodyToHtml(chapter.body))});
+    editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertFromPaste' }));
+    return ok;
+  })()`);
+  if (!insertedHtml) throw new Error('Body HTML insertion failed');
+  await evalv(Runtime, `(() => {
+    const editor = [...document.querySelectorAll('.ProseMirror,[contenteditable="true"]')]
+      .find(el => el.getBoundingClientRect().width > 500) || document.querySelector('.ProseMirror,[contenteditable="true"]');
+    if (editor) editor.blur();
+    return true;
+  })()`);
+  await sleep(500);
   const inserted = await evalv(Runtime, `(() => {
     const editor = [...document.querySelectorAll('.ProseMirror,[contenteditable="true"]')]
       .find(el => el.getBoundingClientRect().width > 500) || document.querySelector('.ProseMirror,[contenteditable="true"]');
-    editor.focus();
-    editor.innerHTML = ${JSON.stringify(html)};
-    editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertFromPaste', data: null }));
-    editor.dispatchEvent(new Event('change', { bubbles: true }));
-    return { chars: editor.innerText.trim().length, paragraphs: editor.querySelectorAll('p').length, html: editor.innerHTML.slice(0, 500) };
+    const paragraphs = [...editor.querySelectorAll('p')];
+    return {
+      chars: editor.innerText.trim().length,
+      paragraphs: paragraphs.length,
+      nonEmptyParagraphs: paragraphs.filter(p => p.innerText.trim()).length,
+      text: editor.innerText.slice(0, 500)
+    };
   })()`);
-  await sleep(500);
-  if (!inserted || inserted.chars < Math.min(500, chapter.bodyChars)) {
+  if (!inserted || inserted.chars < Math.min(500, chapter.bodyChars / 2)) {
     throw new Error(`Body paste failed: ${JSON.stringify(inserted)}`);
   }
-  if (inserted.paragraphs < 2 && chapter.body.trim().split(/\n\s*\n+/).filter(Boolean).length >= 2) {
-    throw new Error(`Body paste paragraph verification failed: ${JSON.stringify(inserted)}`);
+  const minimumParagraphs = Math.max(2, Math.floor(sourceParagraphs * 0.8));
+  if (sourceParagraphs > 1 && inserted.nonEmptyParagraphs < minimumParagraphs) {
+    throw new Error(`Body paragraph verification failed: source=${sourceParagraphs}, inserted=${JSON.stringify(inserted)}`);
   }
   return inserted.chars;
 }
 
 async function createDraft(client, chapter) {
   const { Runtime, Input } = client;
-  await clickText(Runtime, Input, U.continueEditing, { wait: 1000 });
-  await waitFor(Runtime, `!!document.querySelector('.ProseMirror,[contenteditable="true"]')`, 30000, 'chapter editor');
+  await waitFor(Runtime, `document.body && document.body.innerText.includes('${U.next}')`, 30000, 'draft editor');
   await fillChapterMeta(Runtime, Input, chapter);
   await fillChapterBody(Runtime, Input, chapter);
+  await evalv(Runtime, `(() => {
+    const el = [...document.querySelectorAll('textarea')]
+      .find(e => e.placeholder && e.placeholder.includes('请描述你希望设定的人物'));
+    if (!el) return false;
+    const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+    const value = '本章人物沿用作品既有设定，行为、关系与剧情承接前文。';
+    set.call(el, value);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    el.blur();
+    return true;
+  })()`);
   await waitFor(Runtime, `([...document.querySelectorAll('button,[role="button"],a')]
     .some(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
       && !el.disabled
-      && ((el.innerText || el.textContent || '').trim()).includes('${U.saveDraft}')))`, 30000, 'save draft button');
-  if (!await clickText(Runtime, Input, U.saveDraft, { wait: 2500 })) throw new Error('Save draft button not found');
+      && /\\u4e0b\\u4e00\\u6b65/.test((el.innerText || el.textContent || '').trim())))`, 30000, 'next button');
+  await clickText(Runtime, Input, U.next, { wait: 1500 });
+  await waitFor(Runtime, `([...document.querySelectorAll('button,[role="button"],a')]
+    .some(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
+      && !el.disabled
+      && /\\u5b58\\u8349\\u7a3f|\\u4fdd\\u5b58\\u8349\\u7a3f/.test((el.innerText || el.textContent || '').trim())))`, 30000, 'save draft button');
+  if (!await clickSaveDraft(Runtime, Input, 2500)) throw new Error('Save draft button not found');
   await waitFor(Runtime, `document.body.innerText.includes('${U.saved}')`, 30000, 'saved status');
+}
+
+async function waitForDraftSaved(Runtime, bookId, chapter) {
+  const expected = fullChapterTitle(chapter);
+  const deadline = Date.now() + 45000;
+  let lastCount = 0;
+  while (Date.now() < deadline) {
+    const result = await fetchDraftList(Runtime, bookId);
+    const rows = result.draft_list || [];
+    lastCount = rows.length;
+    const row = rows.find(item => (item.title || item.chapter_title || '') === expected);
+    if (row && Number(row.word_number || row.word_count || row.words || 0) > 0) return row;
+    await sleep(2000);
+  }
+  throw new Error(`Saved draft not found via API after timeout: ${expected} (last_count=${lastCount})`);
+}
+
+function requestedDraftState(rows, chapters) {
+  const wanted = new Set(chapters.map(chapter => chapter.no));
+  const grouped = new Map();
+  for (const row of rows) {
+    const title = row.title || row.chapter_title || '';
+    const no = chapterNumber(title);
+    if (!wanted.has(no)) continue;
+    if (!grouped.has(no)) grouped.set(no, []);
+    grouped.get(no).push({ ...row, title, no });
+  }
+  return grouped;
+}
+
+async function verifyRequestedDrafts(Runtime, bookId, chapters, options = {}) {
+  const [draftResult, publishedResult] = await Promise.all([
+    fetchDraftList(Runtime, bookId),
+    fetchPublishedList(Runtime, bookId)
+  ]);
+  const drafts = (draftResult.draft_list || []).map(row => ({ ...row, platformState: 'draft' }));
+  const published = (publishedResult.item_list || []).map(row => ({ ...row, platformState: 'published' }));
+  const grouped = requestedDraftState([...drafts, ...published], chapters);
+  const missing = [];
+  for (const chapter of chapters) {
+    const expected = fullChapterTitle(chapter);
+    const matches = grouped.get(chapter.no) || [];
+    if (!matches.length) {
+      missing.push(expected);
+      continue;
+    }
+    if (matches.length !== 1) {
+      throw new Error(`Duplicate platform drafts for chapter ${chapter.padded}: ${matches.map(row => row.title).join(' | ')}`);
+    }
+    const row = matches[0];
+    if (row.title !== expected) {
+      throw new Error(`Platform title conflict for chapter ${chapter.padded}: expected=${expected}, actual=${row.title}`);
+    }
+    await verifySavedArticle(Runtime, bookId, row, chapter);
+    if (!options.quiet) console.log(`VERIFIED_${row.platformState.toUpperCase()} ${expected}`);
+  }
+  if (missing.length && !options.allowMissing) {
+    throw new Error(`Missing platform drafts: ${missing.join(', ')}`);
+  }
+  return { draftRows: drafts, publishedRows: published, grouped, missing };
+}
+
+async function createDraftWithRecovery(client, bookId, bookDir, chapter, attempts = 3) {
+  const { Runtime, Page } = client;
+  const expected = fullChapterTitle(chapter);
+  let lastError = null;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const before = await fetchDraftList(Runtime, bookId);
+    const beforeIds = new Set((before.draft_list || []).map(row => String(row.item_id)));
+    try {
+      await navigate(Page, draftBoxUrl(bookId, bookDir, 2));
+      let href = '';
+      for (let i = 0; i < 25 && !href; i++) {
+        href = await evalv(Runtime, `(() => {
+          const el = [...document.querySelectorAll('a,button,[role="button"]')]
+            .find(a => (a.innerText || a.textContent || '').trim().includes('${U.newDraft}'));
+          return el && el.href ? el.href : '';
+        })()`);
+        if (!href) await sleep(1000);
+      }
+      if (!href) throw new Error('Cannot locate new draft button');
+      await navigate(Page, href);
+      await sleep(2500);
+      await createDraft(client, chapter);
+      const row = await waitForDraftSaved(Runtime, bookId, chapter);
+      await verifySavedArticle(Runtime, bookId, row, chapter);
+      console.log(`DRAFT ${expected}`);
+      return row;
+    } catch (error) {
+      lastError = error;
+      let after;
+      try {
+        after = await fetchDraftList(Runtime, bookId);
+      } catch (listError) {
+        throw new Error(`${expected} failed and draft state cannot be checked safely: ${error.message}; ${listError.message}`);
+      }
+      const exact = (after.draft_list || []).filter(row => (row.title || row.chapter_title || '') === expected);
+      if (exact.length === 1) {
+        await verifySavedArticle(Runtime, bookId, exact[0], chapter);
+        console.log(`RECOVERED ${expected}`);
+        return exact[0];
+      }
+      if (exact.length > 1) throw new Error(`Retry blocked: duplicate drafts already exist for ${expected}`);
+      const newRows = (after.draft_list || []).filter(row => !beforeIds.has(String(row.item_id)));
+      if (newRows.length) {
+        throw new Error(`Retry blocked after partial save for ${expected}; new unexpected drafts: ${newRows.map(row => `${row.item_id}:${row.title || '未命名草稿'}`).join(', ')}`);
+      }
+      if (attempt < attempts) {
+        console.warn(`RETRY ${expected} attempt=${attempt + 1} reason=${error.message}`);
+        await sleep(1500 * attempt);
+      }
+    }
+  }
+  throw lastError || new Error(`Failed to create ${expected}`);
 }
 
 async function replaceAt(Input, point, text) {
@@ -498,29 +823,35 @@ async function commandScan(chapters) {
   console.log(`TOTAL ${chapters.length} chapters, ${total} chars`);
 }
 
-async function commandDrafts(bookDir, bookId, chapters, port) {
+async function commandDrafts(bookDir, bookId, chapters, port, options = {}) {
   const client = await connect(port);
   const { Runtime, Page } = client;
   try {
     await navigate(Page, draftBoxUrl(bookId, bookDir, 2));
-    let existingText = await getVisibleChapterState(Runtime);
-    await navigate(Page, draftBoxUrl(bookId, bookDir, 1));
-    existingText += '\n' + await getVisibleChapterState(Runtime);
-    await navigate(Page, draftBoxUrl(bookId, bookDir, 2));
+    await verifyAccount(Runtime, options.expectedAccount);
+    const initial = await verifyRequestedDrafts(Runtime, bookId, chapters, { allowMissing: true, quiet: true });
     for (const chapter of chapters) {
       const expected = fullChapterTitle(chapter);
-      if (existingText.includes(expected)) {
-        console.log(`SKIP ${expected}`);
+      const matches = initial.grouped.get(chapter.no) || [];
+      if (matches.length === 1) {
+        console.log(`SKIP_${matches[0].platformState.toUpperCase()} ${expected}`);
         continue;
       }
-      const href = await waitFor(Runtime, `[...document.querySelectorAll('a')].find(a => (a.innerText || a.textContent || '').trim().includes('${U.newDraft}'))?.href`, 15000, 'new draft link');
-      await navigate(Page, href);
-      await createDraft(client, chapter);
-      console.log(`DRAFT ${expected}`);
-      existingText += `\n${expected}`;
-      await navigate(Page, draftBoxUrl(bookId, bookDir, 2));
-      await verifyVisibleDraftSaved(Runtime, chapter);
+      await createDraftWithRecovery(client, bookId, bookDir, chapter, options.attempts || 3);
     }
+    await verifyRequestedDrafts(Runtime, bookId, chapters);
+    console.log(`UPLOAD_OK ${chapters.length} chapters`);
+  } finally {
+    await client.close();
+  }
+}
+
+async function commandVerify(bookId, chapters, port, options = {}) {
+  const client = await connect(port);
+  try {
+    await verifyAccount(client.Runtime, options.expectedAccount);
+    await verifyRequestedDrafts(client.Runtime, bookId, chapters);
+    console.log(`VERIFY_OK ${chapters.length} chapters`);
   } finally {
     await client.close();
   }
@@ -621,18 +952,28 @@ async function saveDraft(Runtime, Input) {
   await waitFor(Runtime, `([...document.querySelectorAll('button,[role="button"],a')]
     .some(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
       && !el.disabled
-      && ((el.innerText || el.textContent || '').trim()).includes('${U.saveDraft}')))`, 30000, 'save draft button');
-  if (!await clickText(Runtime, Input, U.saveDraft, { wait: 3500 })) throw new Error('Save draft button not found');
+      && /\\u5b58\\u8349\\u7a3f|\\u4fdd\\u5b58\\u8349\\u7a3f/.test((el.innerText || el.textContent || '').trim())))`, 30000, 'save draft button');
+  if (!await clickSaveDraft(Runtime, Input, 3500)) throw new Error('Save draft button not found');
   await waitFor(Runtime, `document.body.innerText.includes('${U.saved}')`, 30000, 'saved status');
 }
 
 async function repairDraft(client, href, chapter) {
   const { Runtime, Input, Page } = client;
   await navigate(Page, href);
-  await clickText(Runtime, Input, U.continueEditing, { wait: 1000 });
+  // The recovery prompt can appear after the page first renders. Dismiss it
+  // before editing so it cannot replace the repaired body later.
+  for (let i = 0; i < 5; i++) {
+    if (await clickText(Runtime, Input, U.continueEditing, { wait: 700 })) break;
+    await sleep(700);
+  }
   await waitFor(Runtime, `!!document.querySelector('.ProseMirror,[contenteditable="true"]')`, 30000, 'chapter editor');
   await fillChapterMeta(Runtime, Input, chapter);
   const chars = await fillChapterBody(Runtime, Input, chapter);
+  await waitFor(Runtime, `([...document.querySelectorAll('button,[role="button"],a')]
+    .some(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
+      && !el.disabled
+      && /\\u4e0b\\u4e00\\u6b65/.test((el.innerText || el.textContent || '').trim())))`, 30000, 'next button');
+  if (!await clickText(Runtime, Input, U.next, { wait: 1500 })) throw new Error('Next button not found while repairing draft');
   await saveDraft(Runtime, Input);
   console.log(`REPAIR ${fullChapterTitle(chapter)} ${chars}`);
 }
@@ -793,20 +1134,23 @@ async function main() {
   const aiUse = argValue(args, '--ai-use', 'yes');
   const limit = Number(argValue(args, '--limit', '0'));
   const account = argValue(args, '--account', '');
-  const expectedAccount = argValue(args, '--expected-account', '');
+  const expectedAccount = argValue(args, '--expected-account', (PORT_ACCOUNT_MAP[port] || {}).expected || '');
+  const attempts = Number(argValue(args, '--attempts', '3'));
   const href = argValue(args, '--href', '');
   const chapters = loadChapters(bookDir, from, to);
   if (!chapters.length) throw new Error(`No chapters found in ${bookDir}`);
+  validateLocalChapters(chapters);
 
   if (command === 'scan') return commandScan(chapters);
   if (!bookId) throw new Error('--book-id is required for drafts/publish/all');
-  if (command === 'drafts') return commandDrafts(bookDir, bookId, chapters, port);
+  if (command === 'drafts') return commandDrafts(bookDir, bookId, chapters, port, { expectedAccount, attempts });
+  if (command === 'verify') return commandVerify(bookId, chapters, port, { expectedAccount });
   if (command === 'repair') return commandRepair(bookDir, bookId, chapters, port);
   if (command === 'repair-href') return commandRepairHref(chapters, port, href);
   if (command === 'publish') return commandPublishApi(bookDir, bookId, from, to, port, { aiUse, account, expectedAccount, limit });
   if (command === 'publish-cdp') return commandPublish(bookDir, bookId, chapters, port, { aiUse, limit });
   if (command === 'all') {
-    await commandDrafts(bookDir, bookId, chapters, port);
+    await commandDrafts(bookDir, bookId, chapters, port, { expectedAccount, attempts });
     commandPublishApi(bookDir, bookId, from, to, port, { aiUse, account, expectedAccount });
     return;
   }

@@ -6,7 +6,7 @@
     "version": "1.0.0"
   },
   "servers": [{"url": "https://iz5ts314xq7lzp4t07pfmoz.tail04405f.ts.net"}],
-  "security": [{"bearerAuth": []}],
+  "security": [{"apiKeyAuth": []}],
   "paths": {
     "/v1/defaults": {
       "get": {
@@ -18,16 +18,21 @@
     "/v1/market-jobs": {
       "post": {
         "operationId": "startMarketStudy",
-        "summary": "用公开榜单书目启动本地拆书任务",
+        "summary": "用公开榜单书目启动拆书任务并最长等待35秒返回进度或结果",
+        "description": "返回queued或running时，必须立即调用getNovelJob并传wait_seconds=35持续等待；后台可跨多次轮询继续，但单次网页等待始终不超过35秒。单批最多15本，达到6本立即停止；不足6本尝试完整批。若不足3本，自动提交下一批（带上前批成功书目以复用缓存，加新的未尝试官方榜单书），直到单个任务至少3本有效样本。",
         "x-openai-isConsequential": false,
         "requestBody": {
           "required": true,
           "content": {"application/json": {"schema": {
             "type": "object",
-            "required": ["genre", "ranking_books"],
+            "required": ["genre", "audience", "ranking_platform", "attempted_platforms", "ranking_books"],
             "properties": {
               "genre": {"type": "string"},
-              "sample_limit": {"type": "integer", "minimum": 3, "maximum": 6},
+              "audience": {"type": "string", "enum": ["男频", "女频"], "description": "决定强制榜单降级链"},
+              "ranking_platform": {"type": "string", "enum": ["起点", "飞卢", "晋江", "七猫", "番茄"], "description": "本批书目所在的官方榜单平台；必须遵守受众对应顺序"},
+              "attempted_platforms": {"type": "array", "items": {"type": "string"}, "description": "本轮之前已经失败的平台，必须是对应降级链的连续前缀；首轮传空数组"},
+              "sample_limit": {"type": "integer", "minimum": 3, "maximum": 6, "default": 6, "description": "本批目标有效样本数；3是最低门槛，常规使用6"},
+              "wait_seconds": {"type": "integer", "minimum": 0, "maximum": 35, "default": 35},
               "ranking_books": {
                 "type": "array", "minItems": 1, "maxItems": 15,
                 "items": {
@@ -36,6 +41,7 @@
                     "rank": {"type": "integer"},
                     "title": {"type": "string"},
                     "author": {"type": "string"}
+                    ,"source_platform": {"type": "string", "description": "应与ranking_platform一致"}
                   }
                 }
               }
@@ -48,9 +54,31 @@
     "/v1/jobs/{job_id}": {
       "get": {
         "operationId": "getNovelJob",
-        "summary": "查询后台任务结果",
-        "parameters": [{"$ref": "#/components/parameters/JobId"}],
-        "responses": {"200": {"description": "任务状态和结果"}}
+        "summary": "长轮询查询后台任务进度和小型结果摘要",
+        "description": "如果返回queued或running，必须在同一轮回复中再次调用本操作并传wait_seconds=35，直到任务进入completed、failed或needs_review终态。市场研究终态只返回数量、书名、跳过原因和样本序号，不返回正文。",
+        "parameters": [
+          {"name": "job_id", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "wait_seconds", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 0, "maximum": 35, "default": 35}}
+        ],
+        "responses": {"200": {"description": "任务状态和精简结果摘要"}}
+      }
+    },
+    "/v1/market-jobs/{job_id}/samples/{sample_index}": {
+      "get": {
+        "operationId": "getMarketStudySample",
+        "summary": "读取一个有效拆书样本的抽样章节和结构索引",
+        "description": "仅在市场任务completed后按摘要中的sample_index调用。每次最多返回两段受控长度抽样内容；has_more为true时用next_offset继续读取。仅供内部分析，不得向用户展示正文或复用原句。",
+        "parameters": [
+          {"name": "job_id", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "sample_index", "in": "path", "required": true, "schema": {"type": "integer", "minimum": 1}},
+          {"name": "excerpt_offset", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 0, "default": 0}},
+          {"name": "excerpt_limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 2, "default": 2}}
+        ],
+        "responses": {
+          "200": {"description": "单本拆书样本的一页，包含结构索引和最多2段受控长度正文"},
+          "404": {"description": "任务或样本不存在"},
+          "409": {"description": "任务尚未完成"}
+        }
       }
     },
     "/v1/ideations": {
@@ -62,11 +90,50 @@
           "required": true,
           "content": {"application/json": {"schema": {
             "type": "object",
-            "required": ["genre", "candidates"],
+            "required": ["genre", "market_job_id", "banned_defaults", "entropy_pool", "prior_work_scope", "candidates"],
             "properties": {
               "genre": {"type": "string"},
               "market_job_id": {"type": "string"},
-              "candidates": {"type": "array", "minItems": 12, "maxItems": 12, "items": {"type": "object"}}
+              "banned_defaults": {"type": "array", "minItems": 10, "items": {"type": "string"}},
+              "entropy_pool": {"type": "array", "minItems": 3, "items": {"type": "string"}},
+              "prior_work_scope": {"type": "string", "minLength": 10},
+              "candidates": {
+                "type": "array", "minItems": 12, "maxItems": 12,
+                "items": {
+                  "type": "object",
+                  "required": ["number", "working_title", "hook", "emotional_promise", "heroine_engine", "relationship_engine", "serialization_engine", "risk", "novelty_constraints", "structural_fingerprint", "prior_work_comparison", "costume_swap_test", "scene_causality", "adversarial_review", "scores"],
+                  "properties": {
+                    "number": {"type": "integer", "minimum": 1, "maximum": 12},
+                    "working_title": {"type": "string"},
+                    "hook": {"type": "string"},
+                    "emotional_promise": {"type": "string"},
+                    "heroine_engine": {"type": "string"},
+                    "relationship_engine": {"type": "string"},
+                    "serialization_engine": {"type": "string"},
+                    "risk": {"type": "string"},
+                    "novelty_constraints": {"type": "array", "minItems": 2, "items": {"type": "string"}},
+                    "structural_fingerprint": {"type": "string"},
+                    "prior_work_comparison": {"type": "string"},
+                    "costume_swap_test": {"type": "string"},
+                    "scene_causality": {"type": "string"},
+                    "adversarial_review": {"type": "string"},
+                    "scores": {
+                      "type": "object",
+                      "required": ["originality", "emotional_fit", "opening_hook", "serialization", "heroine_agency", "romantic_chemistry", "fanqie_fit", "total"],
+                      "properties": {
+                        "originality": {"type": "number"},
+                        "emotional_fit": {"type": "number"},
+                        "opening_hook": {"type": "number"},
+                        "serialization": {"type": "number"},
+                        "heroine_agency": {"type": "number"},
+                        "romantic_chemistry": {"type": "number"},
+                        "fanqie_fit": {"type": "number"},
+                        "total": {"type": "number"}
+                      }
+                    }
+                  }
+                }
+              }
             }
           }}}
         },
@@ -77,7 +144,7 @@
       "post": {
         "operationId": "selectNovelCandidate",
         "summary": "记录用户从12个候选中明确选择的方案",
-        "x-openai-isConsequential": true,
+        "x-openai-isConsequential": false,
         "parameters": [{"name": "ideation_id", "in": "path", "required": true, "schema": {"type": "string"}}],
         "requestBody": {
           "required": true,
@@ -92,8 +159,9 @@
     "/v1/books": {
       "post": {
         "operationId": "createNovelProject",
-        "summary": "根据已选方案创建本地新书项目",
-        "x-openai-isConsequential": true,
+        "summary": "创建新书项目；同书名同账号已存在时恢复并返回原book_id",
+        "description": "这是幂等恢复入口。首次调用创建项目；网页刷新、图片生成中断或会话丢失后，用原ideation_id、原书名和原账号再次调用，会返回已有项目及resumed=true，不会创建重复目录。不得要求用户手工提供服务器已知的book_id。",
+        "x-openai-isConsequential": false,
         "requestBody": {
           "required": true,
           "content": {"application/json": {"schema": {
@@ -106,7 +174,7 @@
             }
           }}}
         },
-        "responses": {"200": {"description": "新书ID、阶段和版本"}}
+        "responses": {"200": {"description": "新建或恢复后的book_id、目录、阶段、版本和resumed标记"}}
       }
     },
     "/v1/books/{book_id}/context": {
@@ -114,10 +182,61 @@
         "operationId": "getNovelWritingContext",
         "summary": "写作前读取状态、最近三章和相关历史片段",
         "parameters": [
-          {"$ref": "#/components/parameters/BookId"},
+          {"name": "book_id", "in": "path", "required": true, "schema": {"type": "string"}},
           {"name": "query", "in": "query", "required": false, "schema": {"type": "string"}}
         ],
         "responses": {"200": {"description": "受控长度的可靠写作上下文"}}
+      }
+    },
+    "/v1/books/{book_id}/cover-spec": {
+      "get": {
+        "operationId": "getNovelCoverSpec",
+        "summary": "读取已保存的封面提示词；缺失时返回完整恢复资料",
+        "description": "新会话、网页刷新或封面任务中断后必须先调用。prompt_saved时把cover_prompt逐字发给用户复制到独立图片会话手动生成，禁止自定义GPT调用内置图片生成；cover_saved时不重复生成；missing时根据recovery_context生成提示词并先调用saveNovelCoverSpec。",
+        "parameters": [{"name": "book_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "封面状态、已保存提示词，或用于重建提示词的完整作品资料"}}
+      },
+      "put": {
+        "operationId": "saveNovelCoverSpec",
+        "summary": "在生成图片前持久化当前小说的封面提示词",
+        "description": "必须先保存提示词，再把服务器返回的完整提示词发给用户手动生成。自定义GPT不得调用内置图片生成。提示词必须包含准确书名、作者名、题材画面和600×800要求。",
+        "x-openai-isConsequential": false,
+        "parameters": [{"name": "book_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {
+            "type": "object", "required": ["cover_prompt"],
+            "properties": {
+              "cover_prompt": {"type": "string", "minLength": 80, "description": "将被图片生成能力逐字使用的完整提示词"},
+              "visual_brief": {"type": "object", "description": "可选的结构化题材、人物、时代、场景、色彩和禁用元素"}
+            }
+          }}}
+        },
+        "responses": {"200": {"description": "已落盘的封面配置及prompt_saved状态"}}
+      }
+    },
+    "/v1/books/{book_id}/writing-batch": {
+      "get": {
+        "operationId": "getNovelWritingBatch",
+        "summary": "读取当前可恢复的写作批次设置和进度",
+        "parameters": [{"name": "book_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "本批章节范围、目标字数、上传模式、QA及上传状态"}}
+      },
+      "put": {
+        "operationId": "configureNovelWritingBatch",
+        "summary": "首次三章批准后配置本次写作数量和上传方式",
+        "description": "每次后续正文开始前必须调用。target_chapters与approximate_words只能填写一个；按字数时以每章约3000字向上换算。upload_mode为auto时整批QA通过后自动上传草稿，为review时等待用户明确确认。",
+        "x-openai-isConsequential": false,
+        "parameters": [{"name": "book_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {
+          "type": "object", "required": ["upload_mode"],
+          "properties": {
+            "target_chapters": {"type": "integer", "minimum": 1, "maximum": 100},
+            "approximate_words": {"type": "integer", "minimum": 2500, "maximum": 300000},
+            "upload_mode": {"type": "string", "enum": ["auto", "review"]}
+          }
+        }}}},
+        "responses": {"200": {"description": "已保存的写作批次设置"}}
       }
     },
     "/v1/books/{book_id}/chapters": {
@@ -125,7 +244,7 @@
         "operationId": "saveNovelChapters",
         "summary": "保存或修订最多4章；三章未批准时禁止第4章",
         "x-openai-isConsequential": false,
-        "parameters": [{"$ref": "#/components/parameters/BookId"}],
+        "parameters": [{"name": "book_id", "in": "path", "required": true, "schema": {"type": "string"}}],
         "requestBody": {
           "required": true,
           "content": {"application/json": {"schema": {
@@ -155,7 +274,7 @@
         "operationId": "updateNovelState",
         "summary": "更新人物、时间线、伏笔、章节索引和结构化事实",
         "x-openai-isConsequential": false,
-        "parameters": [{"$ref": "#/components/parameters/BookId"}],
+        "parameters": [{"name": "book_id", "in": "path", "required": true, "schema": {"type": "string"}}],
         "requestBody": {
           "required": true,
           "content": {"application/json": {"schema": {
@@ -171,8 +290,16 @@
         "operationId": "runNovelQualityChecks",
         "summary": "检查字数、正文污染、重复和部分状态冲突",
         "x-openai-isConsequential": false,
-        "parameters": [{"$ref": "#/components/parameters/BookId"}],
-        "requestBody": {"$ref": "#/components/requestBodies/ChapterRange"},
+        "parameters": [{"name": "book_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {
+            "type": "object", "required": ["from", "to", "originality_review"],
+            "properties": {"from": {"type": "integer", "minimum": 1}, "to": {"type": "integer", "minimum": 1},
+              "originality_review": {"type": "object", "required": ["scene_causality_checked", "cross_work_swap_checked", "ai_pattern_reviewed", "notes"],
+                "properties": {"scene_causality_checked": {"type": "boolean"}, "cross_work_swap_checked": {"type": "boolean"}, "ai_pattern_reviewed": {"type": "boolean"}, "notes": {"type": "string", "minLength": 20}}}}
+          }}}
+        },
         "responses": {"200": {"description": "逐章QA结果"}}
       }
     },
@@ -180,8 +307,8 @@
       "post": {
         "operationId": "approveThreeChapterTrial",
         "summary": "用户明确批准前三章后开启批量写作",
-        "x-openai-isConsequential": true,
-        "parameters": [{"$ref": "#/components/parameters/BookId"}],
+        "x-openai-isConsequential": false,
+        "parameters": [{"name": "book_id", "in": "path", "required": true, "schema": {"type": "string"}}],
         "responses": {"200": {"description": "批量写作已开放"}}
       }
     },
@@ -189,58 +316,74 @@
       "post": {
         "operationId": "bindFanqieBook",
         "summary": "用户手动创建作品后按完整书名和账号绑定作品ID",
-        "x-openai-isConsequential": true,
-        "parameters": [{"$ref": "#/components/parameters/BookId"}],
+        "description": "只读取番茄作品列表并保存本地映射，不修改番茄作品。返回任务ID后必须立即调用getNovelJob(wait_seconds=35)，同一轮持续轮询到终态。",
+        "x-openai-isConsequential": false,
+        "parameters": [{"name": "book_id", "in": "path", "required": true, "schema": {"type": "string"}}],
         "responses": {"200": {"description": "后台任务ID"}}
       }
     },
     "/v1/books/{book_id}/draft-upload-jobs": {
       "post": {
         "operationId": "uploadFanqieDrafts",
-        "summary": "上传并验收指定范围草稿，绝不发布",
+        "summary": "上传并验收指定范围草稿，绝不发布；提交后必须持续轮询",
+        "description": "同一本书每次提交新上传任务时，服务器会终止并标记此前所有queued/running上传任务为superseded，只保留最新任务。返回任务ID后立即调用getNovelJob(wait_seconds=35)，在同一轮持续轮询到completed、failed、needs_review或superseded。queued或running时不得结束回复或要求用户主动查询。",
         "x-openai-isConsequential": true,
-        "parameters": [{"$ref": "#/components/parameters/BookId"}],
-        "requestBody": {"$ref": "#/components/requestBodies/ChapterRange"},
-        "responses": {"200": {"description": "草稿上传任务ID"}}
+        "parameters": [{"name": "book_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {
+            "type": "object", "required": ["from", "to"],
+            "properties": {"from": {"type": "integer", "minimum": 1}, "to": {"type": "integer", "minimum": 1}}
+          }}}
+        },
+        "responses": {"200": {"description": "最新草稿上传任务ID及被取代的旧任务ID列表"}}
+      }
+    },
+    "/v1/books/{book_id}/draft-status": {
+      "get": {
+        "operationId": "getFanqieDraftStatus",
+        "summary": "读取当前权威草稿状态，不得仅凭历史失败任务推断",
+        "description": "查询章节是否已上传时必须调用。返回平台成功验收快照、章节uploaded标记和最近上传任务。成功验收快照表示草稿已存在；failed任务只表示该次尝试失败，不能推翻已验收状态。",
+        "parameters": [{"name": "book_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "当前已上传章节、平台验收明细、最近任务和状态判定规则"}}
       }
     },
     "/v1/books/{book_id}/assets": {
       "post": {
         "operationId": "saveNovelAssets",
-        "summary": "保存当前对话中的封面图片或文本素材",
+        "summary": "验收并保存用户手动生成后上传的600×800最终封面",
+        "description": "仅在用户把独立图片会话生成的封面上传到当前对话后调用。必须提交与服务器保存版本逐字一致的cover_prompt。图片必须已经是PNG 600×800；服务器只严格验收并原样保存，不转换格式、不裁剪、不缩放、不补字。",
         "x-openai-isConsequential": false,
-        "parameters": [{"$ref": "#/components/parameters/BookId"}],
+        "parameters": [{"name": "book_id", "in": "path", "required": true, "schema": {"type": "string"}}],
         "requestBody": {
           "required": true,
           "content": {"application/json": {"schema": {
-            "type": "object", "required": ["openaiFileIdRefs"],
+            "type": "object", "required": ["openaiFileIdRefs", "cover_prompt", "image_text_verified"],
             "properties": {
+              "cover_prompt": {
+                "type": "string",
+                "description": "实际用于生成最终封面的完整提示词。必须要求画面准确显示数据库中的完整书名和作者名，并明确题材、人物、场景及600×800构图"
+              },
+              "image_text_verified": {
+                "type": "boolean", "enum": [true],
+                "description": "网页版已目视核对最终图片中的完整书名、作者名和题材画面均正确"
+              },
               "openaiFileIdRefs": {
-                "type": "array", "minItems": 1, "maxItems": 10,
+                "type": "array", "minItems": 1, "maxItems": 1,
                 "items": {"type": "string"},
-                "description": "当前对话中的 OpenAI 文件引用"
+                "description": "用户刚上传到当前对话的唯一一张最终封面，必须实际选中该文件；必须为PNG 600×800，不得为空、不得使用旧图"
               }
             }
           }}}
         },
-        "responses": {"200": {"description": "保存后的本地路径"}}
+        "responses": {"200": {"description": "服务器原样保存后的600×800最终封面、核对状态、提示词和本地路径"}}
       }
     }
   },
   "components": {
-    "securitySchemes": {"bearerAuth": {"type": "http", "scheme": "bearer"}},
-    "parameters": {
-      "BookId": {"name": "book_id", "in": "path", "required": true, "schema": {"type": "string"}},
-      "JobId": {"name": "job_id", "in": "path", "required": true, "schema": {"type": "string"}}
+    "securitySchemes": {
+      "apiKeyAuth": {"type": "apiKey", "in": "header", "name": "X-API-Key"}
     },
-    "requestBodies": {
-      "ChapterRange": {
-        "required": true,
-        "content": {"application/json": {"schema": {
-          "type": "object", "required": ["from", "to"],
-          "properties": {"from": {"type": "integer", "minimum": 1}, "to": {"type": "integer", "minimum": 1}}
-        }}}
-      }
-    }
+    "schemas": {}
   }
 }

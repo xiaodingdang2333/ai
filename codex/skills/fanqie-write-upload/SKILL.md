@@ -42,6 +42,8 @@ Use `scripts/fanqie-account-cache.sh` for cache operations.
 
 ## Writing Workflow
 
+Before writing, read and enforce `../fanqie-novel-ideation/references/originality-gate.md`. For every chapter batch, verify scene causality, compare its plot loop with prior chapters and local books, and perform a separate adversarial AI-pattern review. A failed originality gate blocks QA and upload.
+
 1. Identify the book folder under `/home/admin/ai/txt`.
 2. Read the smallest required context:
    - `作品信息_番茄上传.md` if present.
@@ -69,6 +71,10 @@ Also check at least:
 - duplicate chapter number is not present in body;
 - title matches chapter content;
 - no obviously doubled content.
+- body formatting is preserved as multiple non-empty paragraph nodes; never rely on simulated Enter keystrokes for ProseMirror paragraph creation.
+- each major scene contains goal, obstacle, choice, cost, and state change;
+- the batch does not reuse an old book's or prior unit's plot loop after names/settings are removed;
+- an independent review has checked AI stock phrases, uniform paragraph rhythm, convenience coincidences, tool-character behavior, and repeated emotional payoff.
 
 ## Upload Workflow
 
@@ -93,6 +99,8 @@ Also check at least:
 node codex/skills/fanqie-upload/scripts/fanqie-upload.js drafts --root /home/admin/ai/txt --book '<书名>' --book-id '<ID>' --port <PORT> --from N --to M
 ```
 
+The `drafts` command is the default and is idempotent: it must verify the account, inspect both drafts and already-published chapters, skip valid existing content, upload only missing chapters, retry only when no partial draft was created, read saved content back, and finish with `UPLOAD_OK`. Use `verify` for a read-only repeat check. Do not substitute ad-hoc browser actions when this command is available.
+
 Only if the user explicitly reverses the manual-publishing policy and requests a one-off automated publish, do not use Chrome/CDP clicking by default. Use the backend API publisher and obey the user's AI declaration choice:
 
 ```bash
@@ -102,6 +110,7 @@ node /home/admin/ai/scripts/fanqie-api-publish.js --account account-a --expected
 Use `--ai-use no` when the user says to select `否` or account defaults require it; otherwise use the account default. Publish until the API reports the daily limit, then stop for that day.
 
 5. Verify the draft list row after upload. The row must show the expected chapter title and a nonzero, non-suspicious platform word count.
+   Also read the saved draft content back from the platform and verify that its non-empty `<p>` count is consistent with the local paragraph count. A correct word count alone does not prove formatting is intact.
 6. Save the currently active account cache after successful upload:
 
 ```bash
@@ -126,3 +135,9 @@ After the user scans, confirm the displayed account name before upload. Never up
 - If the platform row is 0, doubled, or missing, repair before reporting success.
 - Do not delete existing drafts unless the user explicitly asked to clear/replace them.
 - When switching accounts, save the current Snap cache first if it may contain a fresh login.
+
+## Mandatory Incident Learning
+
+- After repairing any draft upload incident, update the shared Fanqie memory before reporting completion.
+- Record the symptom, root cause, failed method, successful repair, platform-side verification, and the concrete prevention added to code or workflow.
+- Review prior incident notes before every later upload so the same failure is not repeated.

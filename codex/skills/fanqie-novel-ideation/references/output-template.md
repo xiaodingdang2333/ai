@@ -11,6 +11,8 @@ Include:
 5. Saturated defaults and prohibited repeats.
 6. Diversity axes required for the twelve candidates.
 7. Copyright boundary statement: no names, signature events, wording, or plot sequence copied.
+8. At least ten default cliches (first five prohibited) and the shared entropy pool.
+9. Prior local projects checked and the comparison method.
 
 ## 02 Twelve Candidates
 
@@ -24,6 +26,11 @@ For each candidate include:
 - serialization engine with five example unit types;
 - differentiators;
 - main risk and mitigation;
+- external entropy constraints and their causal effect;
+- structural fingerprint and nearest-prior-work comparison;
+- costume-swap test result;
+- opening causal chain: goal -> obstacle -> choice -> cost -> state change;
+- adversarial-review finding and concrete revision;
 - seven component scores and total;
 - gate result.
 
@@ -37,5 +44,6 @@ Include:
 2. Top-three ranking with score.
 3. For each finalist: hook, retention logic, emotional-payoff loop, opening three-chapter direction without prose, main risk, mitigation, local title collision result, and web title collision result.
 4. Pairwise duplication check among the finalists.
-5. A single recommended first choice with reasons.
-6. Hard-stop note: waiting for user selection; no project or chapters created.
+5. Eight-gate pass table; any failed gate removes the candidate.
+6. A single recommended first choice with reasons.
+7. Hard-stop note: waiting for user selection; no project or chapters created.

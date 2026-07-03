@@ -3,6 +3,68 @@
 const { spawnSync } = require('node:child_process');
 
 const BASE = process.env.SONOVEL_URL || 'http://127.0.0.1:7765';
+const USER_AGENT = 'Mozilla/5.0 (compatible; novel-market-study/1.0)';
+
+function normalizeTitle(value) {
+  return String(value || '').normalize('NFKC').toLowerCase().replace(/[\p{P}\p{S}\s]+/gu, '');
+}
+
+function decodeHtml(value) {
+  return String(value || '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&#39;/gi, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/<[^>]+>/g, '')
+    .trim();
+}
+
+function responseCookies(response) {
+  const values = typeof response.headers.getSetCookie === 'function'
+    ? response.headers.getSetCookie()
+    : [response.headers.get('set-cookie')].filter(Boolean);
+  return values.map((value) => value.split(';', 1)[0]).join('; ');
+}
+
+async function searchShuhaige(title) {
+  try {
+    const home = await fetch('https://www.shuhaige.net/', {
+      headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(8000),
+    });
+    const cookie = responseCookies(home);
+    await home.text();
+    const body = new URLSearchParams({ searchkey: title, searchtype: 'all' });
+    const response = await fetch('https://www.shuhaige.net/search.html', {
+      method: 'POST', body, signal: AbortSignal.timeout(10_000),
+      headers: {
+        'User-Agent': USER_AGENT,
+        Referer: 'https://www.shuhaige.net/',
+        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+        ...(cookie ? { Cookie: cookie } : {}),
+      },
+    });
+    if (!response.ok) return [];
+    const html = await response.text();
+    const results = [];
+    const pattern = /<h3[^>]*>\s*<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>\s*<\/h3>/gi;
+    for (const match of html.matchAll(pattern)) {
+      const bookName = decodeHtml(match[2]);
+      if (!bookName) continue;
+      results.push({
+        bookName,
+        author: '',
+        sourceId: 2,
+        latestChapter: '',
+        url: new URL(match[1], 'https://www.shuhaige.net/').toString(),
+      });
+    }
+    return results;
+  } catch (_) {
+    return [];
+  }
+}
 
 async function getJson(path) {
   const response = await fetch(`${BASE}${path}`);
@@ -62,15 +124,16 @@ async function download(title, author = '') {
 }
 
 async function packet(title, author = '') {
-  const items = await search(title);
-  const selected = items.find((item) => item.bookName === title && Number(item.sourceId) === 6)
-    || items.find((item) => item.bookName === title);
+  const wanted = normalizeTitle(title);
+  const quickItems = await searchShuhaige(title);
+  const quickExact = quickItems.filter((item) => normalizeTitle(item.bookName) === wanted);
+  const items = quickExact.length ? quickItems : await search(title);
+  const exact = items.filter((item) => normalizeTitle(item.bookName) === wanted);
+  const selected = exact.find((item) => author && normalizeTitle(item.author) === normalizeTitle(author))
+    || exact[0];
   if (!selected) {
     printResults(items);
     throw new Error(`No exact source result for: ${title}`);
-  }
-  if (Number(selected.sourceId) !== 6) {
-    throw new Error(`Selective packet currently supports source 6; found source ${selected.sourceId}`);
   }
   const result = spawnSync('/home/admin/ai/scripts/fetch-novel-study-packet.py', [
     selected.url,

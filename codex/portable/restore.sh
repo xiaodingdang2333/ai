@@ -51,6 +51,10 @@ for skill in "$repo_root"/codex/skills/*; do
   ln -s "$skill" "$codex_home/skills/$name"
 done
 
+# The lightweight bootstrap is also usable after a plain clone without the
+# encrypted Codex state archive. Keep both migration paths behaviorally aligned.
+chmod +x "$repo_root/codex/bootstrap-workspace.sh"
+
 shared_memory_source="$repo_root/memory/root-machine"
 shared_memory_target="${ROOT_AI_HOME:-/root/ai}/memory"
 if [[ -d "$shared_memory_source" ]] && mkdir -p "$shared_memory_target" 2>/dev/null; then

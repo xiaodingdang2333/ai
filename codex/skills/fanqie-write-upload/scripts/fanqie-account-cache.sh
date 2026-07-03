@@ -94,6 +94,11 @@ start_chrome() {
   nohup "$CHROMIUM" \
     --headless=new \
     --disable-gpu \
+    --disable-dev-shm-usage \
+    --disable-extensions \
+    --renderer-process-limit=1 \
+    --disk-cache-size=33554432 \
+    --js-flags=--max-old-space-size=192 \
     --no-sandbox \
     --remote-debugging-address=127.0.0.1 \
     --remote-debugging-port="$port" \
@@ -122,11 +127,19 @@ const port = Number(process.argv[2]);
     const {Page, Runtime} = c;
     await Page.enable();
     await Page.navigate({url: 'https://fanqienovel.com/writer/zone'});
-    await new Promise(r => setTimeout(r, 5000));
-    const r = await Runtime.evaluate({returnByValue: true, expression: `document.body.innerText.slice(0, 1500)`});
-    const text = r.result.value || '';
-    const m = text.match(/(?:早上好|中午好|下午好|晚上好|深夜好)，([^\n]+)/) || text.match(/消息通知\d*\n([^\n]+)\n/);
-    console.log(m ? m[1] : (text.includes('请登录') ? 'LOGIN_REQUIRED' : 'UNKNOWN'));
+    const deadline = Date.now() + 30000;
+    let identity = 'UNKNOWN';
+    while (Date.now() < deadline) {
+      const result = await Runtime.evaluate({returnByValue: true, expression: `document.body.innerText.slice(0, 2500)`});
+      const text = result.result.value || '';
+      if (text.includes('请登录')) { identity = 'LOGIN_REQUIRED'; break; }
+      const greeting = text.match(/(?:早上好|中午好|下午好|晚上好|深夜好)，([^\n]+)/);
+      if (greeting) { identity = greeting[1]; break; }
+      const known = ['西大水怪', '桃枝醒醒', '泡芙软呼呼'].filter(name => text.includes(name));
+      if (known.length === 1) { identity = known[0]; break; }
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    console.log(identity);
   } finally {
     if (c) await c.close();
   }

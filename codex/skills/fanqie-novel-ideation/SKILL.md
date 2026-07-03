@@ -11,6 +11,8 @@ Run a gated ideation process before any future new Fanqie book is created. Produ
 
 ## Non-Negotiable Gate
 
+First read and enforce [references/originality-gate.md](references/originality-gate.md). Its eight gates are mandatory for both local Codex and web/Action workflows; they are not optional scoring advice.
+
 For a future new book:
 
 1. Complete the `12 -> 3` funnel.
@@ -35,6 +37,8 @@ For book-creation tags, read `/home/admin/ai/memory/fanqie-book-creation-tags.md
 
 ## Source Boundaries
 
+Ranking-source order is mandatory and applies before selecting books: male-oriented fiction uses Qidian, then Faloo, then Qimao, then Fanqie; female-oriented fiction uses Jinjiang, then Qimao, then Fanqie. Start at the first platform and move to the next only when the current platform cannot yield three usable samples after its batch is attempted. Do not default to Fanqie merely because the target publication platform is Fanqie. The downloader may use a mirror, but title/author/identity must be anchored to the current official ranking platform.
+
 Use local ranking samples under `/home/admin/ai/txt/排行榜/番茄排行榜/` only as market evidence. Extract functions such as:
 
 - opening-hook speed;
@@ -48,7 +52,7 @@ Never reuse or closely transform a sample's names, signature events, relationshi
 ## Phase 1: Baseline And Prohibitions
 
 1. Read a small relevant sample set, normally 3-6 books. Do not scan the whole corpus without need.
-   - Choose current candidates from the official Fanqie category ranking when live ranking access is available.
+   - Choose current candidates from the required platform chain's current official category ranking when live ranking access is available.
    - Use `/home/admin/ai/scripts/sonovel.sh packet '<书名>' '<官方作者>'` to build a local selected-chapter packet when the book is downloadable.
    - A mirror author of `佚名` or a smaller mirror chapter count is not an automatic mismatch. Confirm the book through its synopsis or first chapter titles.
    - If the exact book cannot be found or cannot be confirmed, skip it and continue with the next ranked book. Do not spend repeated retries on one title.
@@ -76,6 +80,8 @@ Use `list-builder` principles to fill dimensional gaps. Do not submit the same p
 
 Save all candidates to `02_十二个创意候选.md`.
 
+For every candidate also record: at least two external entropy constraints, a structural fingerprint, the closest prior local work and material differences, a costume-swap test, a three-chapter causal chain, and an adversarial-review finding plus revision. Missing evidence is a hard failure.
+
 ## Phase 3: Score And Reject
 
 Score each concept with [references/scoring-rubric.md](references/scoring-rubric.md):
@@ -96,6 +102,8 @@ Hard rejection rules:
 - concept breaks the stated dislike/prohibition list;
 - concept requires detective-style explanation to understand the romance;
 - concept cannot sustain at least five materially different story units.
+- any requirement in `originality-gate.md` is missing or failed;
+- more than 70% of core plot nodes can be mapped to an existing local work or another candidate.
 
 Rejected ideas remain visible with rejection reasons. Do not inflate scores to force three survivors; revise or replace weak candidates until at least three legitimately pass.
 

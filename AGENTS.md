@@ -9,6 +9,13 @@
 - When the user says "记住", "以后都这样", "总结经验", asks to record shared memory, or gives a durable correction/preference, update the relevant file under `./memory`.
 - Do not store secrets, passwords, tokens, API keys, or sensitive personal data unless explicitly requested.
 
+## Mandatory Novel Workflow
+
+- For any request to ideate, create, plan, write, revise, evaluate, continue, package, or upload a novel, first read `./memory/novel-writing-workflow.md` and every file it marks as required for that stage.
+- Novel workflow rules are hard gates, not suggestions. This includes ranking-source fallback, the eight-part originality gate, 12-to-3 selection, three-chapter trial, chapter-length/style QA, continuity tracking, account verification, and draft-only upload defaults.
+- Apply the same rules regardless of Codex account, host machine, or whether skills are globally installed. If a skill is not discovered globally, read and execute its repository `SKILL.md` directly.
+- Repository files are authoritative over chat memory. Do not silently weaken a gate because a new machine lacks prior conversation history.
+
 ## Working Agreements
 
 - Default to concise answers: conclusion first, then only the key details needed to act.

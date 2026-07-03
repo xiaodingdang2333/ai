@@ -8,7 +8,8 @@ GPT Instructions field.
 ## Action
 
 - Authentication type: API Key
-- Authentication mode: Bearer
+- Authentication mode: Custom
+- Custom header name: `X-API-Key`
 - API key value: copy the complete contents of
   `/home/admin/ai/runtime/novel-actions/action.token`
 - OpenAPI import URL:
