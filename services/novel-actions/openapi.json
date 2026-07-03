@@ -159,15 +159,16 @@
     "/v1/books": {
       "post": {
         "operationId": "createNovelProject",
-        "summary": "创建新书项目；同书名同账号已存在时恢复并返回原book_id",
-        "description": "这是幂等恢复入口。首次调用创建项目；网页刷新、图片生成中断或会话丢失后，用原ideation_id、原书名和原账号再次调用，会返回已有项目及resumed=true，不会创建重复目录。不得要求用户手工提供服务器已知的book_id。",
+        "summary": "创建新书项目；仅在同书名、同账号、同选题时恢复原book_id",
+        "description": "这是幂等恢复入口。selected_working_title必须与服务器已选候选一致。网页刷新后只有ideation_id、书名和账号全部相同时才恢复；同名项目绑定不同选题时返回ideation_mismatch，禁止静默复用。",
         "x-openai-isConsequential": false,
         "requestBody": {
           "required": true,
           "content": {"application/json": {"schema": {
-            "type": "object", "required": ["ideation_id", "title", "account"],
+            "type": "object", "required": ["ideation_id", "selected_working_title", "title", "account"],
             "properties": {
               "ideation_id": {"type": "string"},
+              "selected_working_title": {"type": "string", "description": "服务器已选候选的原始working_title，用于防止书名与选题串线"},
               "title": {"type": "string"},
               "account": {"type": "string", "enum": ["account-a", "account-b", "account-c"]},
               "metadata": {"type": "object"}
@@ -175,6 +176,28 @@
           }}}
         },
         "responses": {"200": {"description": "新建或恢复后的book_id、目录、阶段、版本和resumed标记"}}
+      }
+    },
+    "/v1/books/{book_id}/ideation-rebind": {
+      "post": {
+        "operationId": "rebindNovelProjectIdeation",
+        "summary": "将无正文的错误项目安全重绑到正确选题",
+        "description": "仅允许trial_writing、无正文、无番茄绑定、无正式封面的项目。操作前自动备份旧项目，保留book_id和目录，重写作品圣经及初始状态并清除错误封面提示词。",
+        "x-openai-isConsequential": false,
+        "parameters": [{"name": "book_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {
+          "type": "object",
+          "required": ["ideation_id", "selected_working_title", "title", "account", "confirm_rebuild"],
+          "properties": {
+            "ideation_id": {"type": "string"},
+            "selected_working_title": {"type": "string"},
+            "title": {"type": "string"},
+            "account": {"type": "string", "enum": ["account-a", "account-b", "account-c"]},
+            "confirm_rebuild": {"type": "boolean", "enum": [true]},
+            "metadata": {"type": "object"}
+          }
+        }}}},
+        "responses": {"200": {"description": "重绑后的原book_id、目录、正确选题和封面状态"}}
       }
     },
     "/v1/books/{book_id}/context": {

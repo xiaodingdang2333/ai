@@ -314,6 +314,109 @@ def book_project_response(book, resumed=False):
     return result
 
 
+def selected_candidate_for_ideation(idea):
+    candidates = json.loads(idea["candidates_json"])
+    number = int(idea["selected_no"] or 0)
+    if idea["stage"] != "selected" or not 1 <= number <= len(candidates):
+        raise ApiError(409, "选题记录不存在或尚未完成选择")
+    return candidates[number - 1]
+
+
+def validate_selected_working_title(payload, selected):
+    supplied = str(payload.get("selected_working_title") or "").strip()
+    expected = str(selected.get("working_title") or "").strip()
+    if not supplied or normalize_title(supplied) != normalize_title(expected):
+        raise ApiError(409, "建书请求中的候选标题与已选方案不一致", {
+            "expected_selected_working_title": expected,
+            "received_selected_working_title": supplied,
+        })
+
+
+def rebind_blockers(book):
+    directory = book_dir(book)
+    blockers = []
+    with db() as con:
+        chapter_count = int(con.execute(
+            "SELECT COUNT(*) n FROM chapters WHERE book_id=?", (book["id"],)
+        ).fetchone()["n"])
+    body_files = list((directory / "正文").glob("*.md")) if (directory / "正文").exists() else []
+    if book["stage"] != "trial_writing":
+        blockers.append(f"stage={book['stage']}")
+    if book.get("platform_book_id"):
+        blockers.append("已绑定番茄作品")
+    if chapter_count or body_files:
+        blockers.append(f"已有正文或章节记录:{max(chapter_count, len(body_files))}")
+    if cover_paths(book)["cover"].exists():
+        blockers.append("已有正式封面")
+    return blockers
+
+
+def rebind_book_ideation(book_id, payload):
+    book = get_book(book_id)
+    if payload.get("confirm_rebuild") is not True:
+        raise ApiError(400, "必须明确confirm_rebuild=true才能重建项目")
+    title = safe_title(payload.get("title"))
+    account = str(payload.get("account") or "")
+    ideation_id = str(payload.get("ideation_id") or "")
+    if title != book["title"] or account != book["account"]:
+        raise ApiError(409, "重建请求的书名或账号与现有项目不一致", {
+            "existing_title": book["title"], "existing_account": book["account"],
+        })
+    with db() as con:
+        idea = con.execute("SELECT * FROM ideations WHERE id=?", (ideation_id,)).fetchone()
+    if not idea:
+        raise ApiError(404, "目标选题记录不存在")
+    selected = selected_candidate_for_ideation(idea)
+    validate_selected_working_title(payload, selected)
+    if book["ideation_id"] == ideation_id:
+        result = book_project_response(book, resumed=True)
+        result.update({"rebound": False, "already_bound": True,
+                       "selected_working_title": selected.get("working_title")})
+        return result
+    blockers = rebind_blockers(book)
+    if blockers:
+        raise ApiError(409, "现有项目包含不可覆盖内容，禁止重绑选题", {
+            "book_id": book_id, "rebind_allowed": False, "blockers": blockers,
+        })
+
+    directory = book_dir(book)
+    recovery_root = ROOT / "recovery" / "project-rebind"
+    recovery_root.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup = recovery_root / f"{book_id}-{stamp}"
+    shutil.copytree(directory, backup)
+
+    metadata = payload.get("metadata") or {}
+    atomic_write(directory / "作品信息_番茄上传.md", "# 作品信息\n\n" +
+                 f"书名：{title}\n\n作者笔名：{ACCOUNT_MAP[account]['name']}\n\n番茄作品ID：待绑定\n\n" +
+                 f"简介：\n\n{metadata.get('synopsis','')}\n\n创建状态：本地三章试读阶段。\n")
+    atomic_write(directory / "设定/作品圣经.md",
+                 "# 作品圣经\n\n" + json.dumps(selected, ensure_ascii=False, indent=2) + "\n")
+    for key, rel in STATE_FILES.items():
+        path = directory / rel
+        if key == "book_bible":
+            continue
+        if key == "structured":
+            atomic_write(path, json.dumps({"current_world": "", "characters": [], "worlds": [], "facts": []},
+                                          ensure_ascii=False, indent=2) + "\n")
+        else:
+            atomic_write(path, f"# {path.stem}\n\n")
+    paths = cover_paths(book)
+    paths["config"].unlink(missing_ok=True)
+    paths["prompt"].unlink(missing_ok=True)
+    with db() as con:
+        con.execute("UPDATE books SET ideation_id=?,revision=revision+1,last_qa_revision=NULL,updated_at=? WHERE id=?",
+                    (ideation_id, now_iso(), book_id))
+    audit("book_ideation_rebound", book_id, {
+        "old_ideation_id": book["ideation_id"], "new_ideation_id": ideation_id,
+        "backup": str(backup),
+    })
+    result = book_project_response(get_book(book_id))
+    result.update({"rebound": True, "already_bound": False, "backup_path": str(backup),
+                   "selected_working_title": selected.get("working_title")})
+    return result
+
+
 def check_revision(book, expected):
     if int(expected or 0) != int(book["revision"]):
         raise ApiError(409, "书籍版本已变化，请重新读取上下文",
@@ -1116,6 +1219,11 @@ def create_book(payload):
     if account not in ACCOUNT_MAP:
         raise ApiError(400, "作者账号不在白名单")
     with db() as con:
+        idea = con.execute("SELECT * FROM ideations WHERE id=?", (ideation_id,)).fetchone()
+        if not idea:
+            raise ApiError(409, "必须先完成12选3并选择一个方案")
+        selected = selected_candidate_for_ideation(idea)
+        validate_selected_working_title(payload, selected)
         existing = con.execute("SELECT * FROM books WHERE title=?", (title,)).fetchone()
         if existing:
             if existing["account"] != account:
@@ -1130,18 +1238,27 @@ def create_book(payload):
                     "book_id": existing["id"],
                     "path": str(existing_path),
                 })
+            if existing["ideation_id"] != ideation_id:
+                current_idea = con.execute("SELECT * FROM ideations WHERE id=?",
+                                           (existing["ideation_id"],)).fetchone()
+                current_selected = selected_candidate_for_ideation(current_idea) if current_idea else {}
+                blockers = rebind_blockers(row_dict(existing))
+                raise ApiError(409, "同名项目绑定了不同选题，禁止静默复用", {
+                    "code": "ideation_mismatch", "book_id": existing["id"],
+                    "existing_ideation_id": existing["ideation_id"],
+                    "requested_ideation_id": ideation_id,
+                    "existing_selected_working_title": current_selected.get("working_title"),
+                    "requested_selected_working_title": selected.get("working_title"),
+                    "rebind_allowed": not blockers, "blockers": blockers,
+                })
             restored = book_project_response(get_book(existing["id"]), resumed=True)
             audit("book_resumed", existing["id"], {"title": title, "account": account})
             return restored
-        idea = con.execute("SELECT * FROM ideations WHERE id=?", (ideation_id,)).fetchone()
-        if not idea or idea["stage"] != "selected":
-            raise ApiError(409, "必须先完成12选3并选择一个方案")
     target = (TXT_ROOT / title).resolve()
     if target.exists():
         raise ApiError(409, "本地同名目录已存在")
     for rel in ["正文", "大纲", "设定/角色", "设定/世界观", "追踪", "分析", "封面"]:
         (target / rel).mkdir(parents=True, exist_ok=True)
-    selected = json.loads(idea["candidates_json"])[int(idea["selected_no"]) - 1]
     metadata = payload.get("metadata") or {}
     atomic_write(target / "作品信息_番茄上传.md", "# 作品信息\n\n" +
                  f"书名：{title}\n\n作者笔名：{ACCOUNT_MAP[account]['name']}\n\n番茄作品ID：待绑定\n\n" +
@@ -1609,6 +1726,9 @@ class Handler(BaseHTTPRequestHandler):
             return {"ideation_id": m.group(1), "selected_no": number, "stage": "selected"}
         if method == "POST" and path == "/v1/books":
             return create_book(body)
+        m = re.fullmatch(r"/v1/books/([0-9a-f]+)/ideation-rebind", path)
+        if method == "POST" and m:
+            return rebind_book_ideation(m.group(1), body)
         m = re.fullmatch(r"/v1/books/([0-9a-f]+)/cover-spec", path)
         if method == "GET" and m:
             return get_cover_spec(m.group(1))

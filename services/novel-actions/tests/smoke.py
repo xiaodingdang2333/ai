@@ -130,12 +130,56 @@ def main():
             assert selected["stage"] == "selected"
 
             book = data(request(base, "/v1/books", token, "POST", {
-                "ideation_id": idea["ideation_id"], "title": "冒烟测试新书", "account": "account-b",
+                "ideation_id": idea["ideation_id"], "selected_working_title": "候选1",
+                "title": "冒烟测试新书", "account": "account-b",
                 "metadata": {"synopsis": "仅用于隔离测试"},
             }))
             assert book["stage"] == "trial_writing" and book["revision"] == 1
             book_id = book["id"]
             assert book["cover_status"] == "missing"
+
+            rebind_book = data(request(base, "/v1/books", token, "POST", {
+                "ideation_id": idea["ideation_id"], "selected_working_title": "候选1",
+                "title": "重绑测试书", "account": "account-b",
+            }))
+            replacement = json.loads(json.dumps(candidates, ensure_ascii=False))
+            replacement[0]["working_title"] = "正确候选"
+            replacement_id = "d" * 32
+            with sqlite3.connect(state / "state.sqlite3") as con:
+                con.execute("INSERT INTO ideations VALUES(?,?,'selected',?,1,?,?,?)", (
+                    replacement_id, "女频快穿", json.dumps(replacement, ensure_ascii=False),
+                    market_job_id, stamp, stamp,
+                ))
+            mismatch = request(base, "/v1/books", token, "POST", {
+                "ideation_id": replacement_id, "selected_working_title": "正确候选",
+                "title": "重绑测试书", "account": "account-b",
+            })
+            assert mismatch[0] == 409
+            assert mismatch[2]["details"]["code"] == "ideation_mismatch"
+            assert mismatch[2]["details"]["rebind_allowed"] is True
+            rebound = data(request(base, f"/v1/books/{rebind_book['id']}/ideation-rebind", token, "POST", {
+                "ideation_id": replacement_id, "selected_working_title": "正确候选",
+                "title": "重绑测试书", "account": "account-b", "confirm_rebuild": True,
+                "metadata": {"synopsis": "重绑后的简介"},
+            }))
+            assert rebound["rebound"] is True and rebound["id"] == rebind_book["id"]
+            assert rebound["cover_status"] == "missing"
+            rebound_cover = data(request(base, f"/v1/books/{rebind_book['id']}/cover-spec", token))
+            assert rebound_cover["recovery_context"]["selected_candidate"]["working_title"] == "正确候选"
+            bible = Path(rebound["path"]) / "设定/作品圣经.md"
+            bible_text = bible.read_text(encoding="utf-8")
+            bible_data = json.loads(bible_text[bible_text.index("{"):])
+            assert bible_data["working_title"] == "正确候选"
+            data(request(base, f"/v1/books/{rebind_book['id']}/chapters", token, "POST", {
+                "expected_revision": 2,
+                "chapters": [{"chapter_no": 1, "title": "已有正文", "body": "测" * 2600, "summary": "阻断重绑"}],
+            }))
+            blocked_rebind = request(base, f"/v1/books/{rebind_book['id']}/ideation-rebind", token, "POST", {
+                "ideation_id": idea["ideation_id"], "selected_working_title": "候选1",
+                "title": "重绑测试书", "account": "account-b", "confirm_rebuild": True,
+            })
+            assert blocked_rebind[0] == 409 and blocked_rebind[2]["details"]["rebind_allowed"] is False
+
             missing_cover = data(request(base, f"/v1/books/{book_id}/cover-spec", token))
             assert missing_cover["cover_status"] == "missing"
             assert missing_cover["recovery_context"]["title"] == "冒烟测试新书"
@@ -157,7 +201,8 @@ def main():
             assert saved_cover["manual_generation_required"] is True
             assert "禁止调用" in saved_cover["instruction"]
             resumed = data(request(base, "/v1/books", token, "POST", {
-                "ideation_id": idea["ideation_id"], "title": "冒烟测试新书", "account": "account-b",
+                "ideation_id": idea["ideation_id"], "selected_working_title": "候选1",
+                "title": "冒烟测试新书", "account": "account-b",
             }))
             assert resumed["resumed"] is True and resumed["cover_status"] == "prompt_saved"
 
