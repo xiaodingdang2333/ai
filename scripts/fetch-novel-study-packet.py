@@ -148,24 +148,42 @@ def main():
 
     indices = selected_indices(len(links), args.front, args.middle, args.tail)
     records = []
-    for position, index in enumerate(indices, 1):
-        title, url = links[index]
-        parser_ = ChapterTextParser()
-        parser_.feed(fetch(url))
-        text = parser_.text()
-        if len(text) < 100:
-            raise SystemExit(f"Chapter text too short: {title} ({url})")
-        filename = f"{index + 1:04d}-{safe_name(title)}.txt"
-        (selected_dir / filename).write_text(f"{title}\n\n{text}\n", encoding="utf-8")
-        records.append({
-            "index": index + 1,
-            "title": title,
-            "url": url,
-            "characters": len(re.sub(r"\s+", "", text)),
-            "file": str(selected_dir / filename),
-        })
+    used = set()
+    failures = []
+    for position, requested_index in enumerate(indices, 1):
+        candidates = [requested_index]
+        for distance in range(1, 5):
+            candidates.extend((requested_index + distance, requested_index - distance))
+        for index in candidates:
+            if index < 0 or index >= len(links) or index in used:
+                continue
+            title, url = links[index]
+            try:
+                parser_ = ChapterTextParser()
+                parser_.feed(fetch(url))
+                text = parser_.text()
+            except Exception as exc:
+                failures.append({"index": index + 1, "title": title, "reason": str(exc)[:300]})
+                continue
+            if len(text) < 100:
+                failures.append({"index": index + 1, "title": title, "reason": "chapter_text_too_short"})
+                continue
+            filename = f"{index + 1:04d}-{safe_name(title)}.txt"
+            (selected_dir / filename).write_text(f"{title}\n\n{text}\n", encoding="utf-8")
+            records.append({
+                "index": index + 1,
+                "title": title,
+                "url": url,
+                "characters": len(re.sub(r"\s+", "", text)),
+                "file": str(selected_dir / filename),
+            })
+            used.add(index)
+            break
         if position < len(indices):
-            time.sleep(0.5)
+            time.sleep(0.3)
+
+    if len(records) < min(3, len(indices)):
+        raise SystemExit(f"Too few usable chapters: {len(records)}/{len(indices)}; failures={failures[:5]}")
 
     metadata = {
         "title": args.title,
@@ -177,6 +195,7 @@ def main():
         "selected_chapter_count": len(records),
         "selected_characters": sum(item["characters"] for item in records),
         "chapters": records,
+        "skipped_chapters": failures,
     }
     (output / "source.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     lines = [

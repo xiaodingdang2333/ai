@@ -66,7 +66,7 @@ MARKET_FAILURE_HOURS = 6
 # samples stop the queue early; 8 minutes covers all 15 titles even at the
 # resource-safe single-worker fallback (15 * 30 seconds plus startup margin).
 MARKET_BATCH_SECONDS = 480
-MARKET_BOOK_SECONDS = 30
+MARKET_BOOK_SECONDS = 60
 ACTION_WAIT_SECONDS = 35
 
 
