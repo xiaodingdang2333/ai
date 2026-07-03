@@ -123,6 +123,14 @@ def init_db():
           uploaded INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL,
           PRIMARY KEY(book_id, chapter_no), FOREIGN KEY(book_id) REFERENCES books(id)
         );
+        CREATE TABLE IF NOT EXISTS chapter_drafts (
+          book_id TEXT NOT NULL, chapter_no INTEGER NOT NULL, title TEXT NOT NULL,
+          file_path TEXT NOT NULL, body_chars INTEGER NOT NULL, cjk_chars INTEGER NOT NULL,
+          summary TEXT NOT NULL DEFAULT '', draft_revision INTEGER NOT NULL DEFAULT 1,
+          qa_json TEXT, qa_passed INTEGER NOT NULL DEFAULT 0,
+          status TEXT NOT NULL DEFAULT 'drafting', updated_at TEXT NOT NULL,
+          PRIMARY KEY(book_id, chapter_no), FOREIGN KEY(book_id) REFERENCES books(id)
+        );
         CREATE VIRTUAL TABLE IF NOT EXISTS chapter_fts USING fts5(
           book_id UNINDEXED, chapter_no UNINDEXED, title, summary, body
         );
@@ -339,6 +347,9 @@ def rebind_blockers(book):
         chapter_count = int(con.execute(
             "SELECT COUNT(*) n FROM chapters WHERE book_id=?", (book["id"],)
         ).fetchone()["n"])
+        draft_count = int(con.execute(
+            "SELECT COUNT(*) n FROM chapter_drafts WHERE book_id=?", (book["id"],)
+        ).fetchone()["n"])
     body_files = list((directory / "正文").glob("*.md")) if (directory / "正文").exists() else []
     if book["stage"] != "trial_writing":
         blockers.append(f"stage={book['stage']}")
@@ -346,6 +357,8 @@ def rebind_blockers(book):
         blockers.append("已绑定番茄作品")
     if chapter_count or body_files:
         blockers.append(f"已有正文或章节记录:{max(chapter_count, len(body_files))}")
+    if draft_count:
+        blockers.append(f"已有临时稿:{draft_count}")
     if cover_paths(book)["cover"].exists():
         blockers.append("已有正式封面")
     return blockers
@@ -1257,7 +1270,7 @@ def create_book(payload):
     target = (TXT_ROOT / title).resolve()
     if target.exists():
         raise ApiError(409, "本地同名目录已存在")
-    for rel in ["正文", "大纲", "设定/角色", "设定/世界观", "追踪", "分析", "封面"]:
+    for rel in ["正文", "草稿暂存", "大纲", "设定/角色", "设定/世界观", "追踪", "分析", "封面"]:
         (target / rel).mkdir(parents=True, exist_ok=True)
     metadata = payload.get("metadata") or {}
     atomic_write(target / "作品信息_番茄上传.md", "# 作品信息\n\n" +
@@ -1283,6 +1296,14 @@ def chapter_file(directory, no, title):
     return directory / "正文" / f"第{no:03d}章_{safe_title(title)}.md"
 
 
+def chapter_draft_file(directory, no, title):
+    return directory / "草稿暂存" / f"第{no:03d}章_{safe_title(title)}.md"
+
+
+def draft_state_path(directory):
+    return directory / "草稿暂存" / "待确认状态.json"
+
+
 def short_chapter_title(value):
     title = safe_title(value)
     title = re.sub(r"^(?:第\s*0*\d+\s*章[\s._-]*)+", "", title).strip()
@@ -1291,18 +1312,68 @@ def short_chapter_title(value):
     return title
 
 
+def promote_drafts(book_id, start, end):
+    book = get_book(book_id)
+    directory = book_dir(book)
+    with db() as con:
+        rows = con.execute(
+            "SELECT * FROM chapter_drafts WHERE book_id=? AND chapter_no BETWEEN ? AND ? ORDER BY chapter_no",
+            (book_id, start, end),
+        ).fetchall()
+    if len(rows) != end - start + 1 or any(not row["qa_passed"] for row in rows):
+        raise ApiError(409, "临时稿缺失或QA未通过，不能正式保存")
+    with db() as con:
+        for row in rows:
+            body = Path(row["file_path"]).read_text(encoding="utf-8")
+            path = chapter_file(directory, row["chapter_no"], row["title"])
+            old = con.execute("SELECT file_path FROM chapters WHERE book_id=? AND chapter_no=?",
+                              (book_id, row["chapter_no"])).fetchone()
+            if old and Path(old["file_path"]) != path and Path(old["file_path"]).exists():
+                Path(old["file_path"]).unlink()
+            atomic_write(path, body)
+            con.execute("""INSERT OR REPLACE INTO chapters
+                        (book_id,chapter_no,title,file_path,body_chars,cjk_chars,summary,qa_json,qa_passed,uploaded,updated_at)
+                        VALUES(?,?,?,?,?,?,?,?,1,COALESCE((SELECT uploaded FROM chapters WHERE book_id=? AND chapter_no=?),0),?)""",
+                        (book_id, row["chapter_no"], row["title"], str(path), row["body_chars"],
+                         row["cjk_chars"], row["summary"], row["qa_json"], book_id, row["chapter_no"], now_iso()))
+            con.execute("DELETE FROM chapter_fts WHERE book_id=? AND chapter_no=?", (book_id, row["chapter_no"]))
+            con.execute("INSERT INTO chapter_fts VALUES(?,?,?,?,?)",
+                        (book_id, row["chapter_no"], row["title"], row["summary"], body))
+        con.execute("DELETE FROM chapter_drafts WHERE book_id=? AND chapter_no BETWEEN ? AND ?",
+                    (book_id, start, end))
+        bump_revision(con, book_id)
+    state_path = draft_state_path(directory)
+    if state_path.exists():
+        try:
+            staged_state = json.loads(state_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            staged_state = {}
+        for key, value in staged_state.items():
+            if key not in STATE_FILES:
+                continue
+            path = directory / STATE_FILES[key]
+            if key == "structured":
+                atomic_write(path, json.dumps(value, ensure_ascii=False, indent=2) + "\n")
+            else:
+                atomic_write(path, str(value).strip() + "\n")
+        state_path.unlink(missing_ok=True)
+    for row in rows:
+        Path(row["file_path"]).unlink(missing_ok=True)
+    audit("chapter_drafts_promoted", book_id, {"from": start, "to": end})
+
+
 def save_chapters(book_id, payload):
     book = get_book(book_id)
     check_revision(book, payload.get("expected_revision"))
     items = payload.get("chapters") or []
     if not 1 <= len(items) <= MAX_CHAPTER_BATCH:
         raise ApiError(400, "每批必须保存1到4章")
-    if book["stage"] not in {"trial_writing", "bulk_writing"}:
+    if book["stage"] not in {"trial_writing", "trial_ready_for_review", "awaiting_trial_approval", "bulk_writing"}:
         raise ApiError(409, "当前阶段不允许写章")
     numbers = [int(x.get("chapter_no") or 0) for x in items]
     if len(set(numbers)) != len(numbers) or min(numbers) < 1:
         raise ApiError(400, "章节编号无效或重复")
-    if book["stage"] == "trial_writing" and any(n > 3 for n in numbers):
+    if book["stage"] in {"trial_writing", "trial_ready_for_review", "awaiting_trial_approval"} and any(n > 3 for n in numbers):
         raise ApiError(409, "三章试读未批准，不能写第4章")
     directory = book_dir(book)
     prepared = []
@@ -1315,20 +1386,21 @@ def save_chapters(book_id, payload):
         prepared.append((no, title, body, str(item.get("summary") or "")))
     with db() as con:
         for no, title, body, summary in prepared:
-            old = con.execute("SELECT file_path FROM chapters WHERE book_id=? AND chapter_no=?", (book_id, no)).fetchone()
-            path = chapter_file(directory, no, title)
+            old = con.execute("SELECT file_path,draft_revision FROM chapter_drafts WHERE book_id=? AND chapter_no=?", (book_id, no)).fetchone()
+            path = chapter_draft_file(directory, no, title)
             if old and Path(old["file_path"]) != path and Path(old["file_path"]).exists():
                 Path(old["file_path"]).unlink()
             atomic_write(path, body)
-            con.execute("INSERT OR REPLACE INTO chapters(book_id,chapter_no,title,file_path,body_chars,cjk_chars,summary,qa_json,qa_passed,uploaded,updated_at) VALUES(?,?,?,?,?,?,?,NULL,0,COALESCE((SELECT uploaded FROM chapters WHERE book_id=? AND chapter_no=?),0),?)",
-                        (book_id, no, title, str(path), len(body.strip()), cjk_count(body), summary, book_id, no, now_iso()))
-            con.execute("DELETE FROM chapter_fts WHERE book_id=? AND chapter_no=?", (book_id, no))
-            con.execute("INSERT INTO chapter_fts VALUES(?,?,?,?,?)", (book_id, no, title, summary, body))
+            draft_revision = int(old["draft_revision"] if old else 0) + 1
+            con.execute("""INSERT OR REPLACE INTO chapter_drafts
+                        (book_id,chapter_no,title,file_path,body_chars,cjk_chars,summary,draft_revision,qa_json,qa_passed,status,updated_at)
+                        VALUES(?,?,?,?,?,?,?,?,NULL,0,'drafting',?)""",
+                        (book_id, no, title, str(path), len(body.strip()), cjk_count(body), summary,
+                         draft_revision, now_iso()))
         bump_revision(con, book_id)
-        count = con.execute("SELECT COUNT(*) n FROM chapters WHERE book_id=? AND chapter_no BETWEEN 1 AND 3", (book_id,)).fetchone()["n"]
-        if book["stage"] == "trial_writing" and count == 3:
-            con.execute("UPDATE books SET stage='awaiting_trial_approval' WHERE id=?", (book_id,))
-    audit("chapters_saved", book_id, {"numbers": numbers})
+        if book["stage"] in {"trial_ready_for_review", "awaiting_trial_approval"}:
+            con.execute("UPDATE books SET stage='trial_writing' WHERE id=?", (book_id,))
+    audit("chapter_drafts_saved", book_id, {"numbers": numbers})
     refresh_writing_batch(book_id)
     return get_book(book_id)
 
@@ -1338,17 +1410,32 @@ def update_state(book_id, payload):
     check_revision(book, payload.get("expected_revision"))
     state = payload.get("state") or {}
     directory = book_dir(book)
-    for key, value in state.items():
-        if key not in STATE_FILES:
-            continue
-        path = directory / STATE_FILES[key]
-        if key == "structured":
-            atomic_write(path, json.dumps(value, ensure_ascii=False, indent=2) + "\n")
-        else:
-            atomic_write(path, str(value).strip() + "\n")
+    stage_state = book["stage"] in {"trial_writing", "trial_ready_for_review", "awaiting_trial_approval"}
+    with db() as con:
+        batch = con.execute("SELECT status FROM writing_batches WHERE book_id=?", (book_id,)).fetchone()
+    stage_state = stage_state or bool(batch and batch["status"] not in {"completed", "cancelled"})
+    if stage_state:
+        path = draft_state_path(directory)
+        existing = {}
+        if path.exists():
+            try:
+                existing = json.loads(path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                existing = {}
+        existing.update({key: value for key, value in state.items() if key in STATE_FILES})
+        atomic_write(path, json.dumps(existing, ensure_ascii=False, indent=2) + "\n")
+    else:
+        for key, value in state.items():
+            if key not in STATE_FILES:
+                continue
+            path = directory / STATE_FILES[key]
+            if key == "structured":
+                atomic_write(path, json.dumps(value, ensure_ascii=False, indent=2) + "\n")
+            else:
+                atomic_write(path, str(value).strip() + "\n")
     with db() as con:
         bump_revision(con, book_id)
-    audit("state_updated", book_id, {"keys": sorted(state)})
+    audit("draft_state_updated" if stage_state else "state_updated", book_id, {"keys": sorted(state)})
     return get_book(book_id)
 
 
@@ -1363,6 +1450,7 @@ def get_context(book_id, query=""):
     states = {key: read_limited(directory / rel, state_limits[key]) for key, rel in STATE_FILES.items()}
     with db() as con:
         latest = con.execute("SELECT * FROM chapters WHERE book_id=? ORDER BY chapter_no DESC LIMIT 3", (book_id,)).fetchall()
+        drafts = con.execute("SELECT * FROM chapter_drafts WHERE book_id=? ORDER BY chapter_no", (book_id,)).fetchall()
         related = []
         if query.strip():
             try:
@@ -1374,8 +1462,25 @@ def get_context(book_id, query=""):
         chapters.append({"chapter_no": row["chapter_no"], "title": row["title"],
                          "body": read_limited(Path(row["file_path"]), 6000)})
     return {"book": {k: book[k] for k in ("id", "title", "stage", "revision", "account", "platform_book_id")},
-            "state": states, "latest_chapters": chapters, "related": [row_dict(x) for x in related],
+            "state": states, "latest_chapters": chapters,
+            "active_drafts": [{"chapter_no": x["chapter_no"], "title": x["title"],
+                               "draft_revision": x["draft_revision"], "qa_passed": bool(x["qa_passed"]),
+                               "status": x["status"], "body": read_limited(Path(x["file_path"]), 6000)} for x in drafts],
+            "related": [row_dict(x) for x in related],
             "instruction": "必须以服务器状态为准；发现冲突先报告，不得猜测。"}
+
+
+def get_chapter_drafts(book_id, start=1, end=10**9):
+    book = get_book(book_id)
+    with db() as con:
+        rows = con.execute("SELECT * FROM chapter_drafts WHERE book_id=? AND chapter_no BETWEEN ? AND ? ORDER BY chapter_no",
+                           (book_id, start, end)).fetchall()
+    return {
+        "book_id": book_id, "stage": book["stage"], "revision": book["revision"],
+        "drafts": [{**row_dict(row), "qa_passed": bool(row["qa_passed"]),
+                    "qa_json": json.loads(row["qa_json"]) if row["qa_json"] else None,
+                    "body": read_limited(Path(row["file_path"]), 20_000)} for row in rows],
+    }
 
 
 def get_writing_batch(book_id):
@@ -1427,7 +1532,7 @@ def refresh_writing_batch(book_id):
             return row_dict(batch)
         start = batch["from_chapter"]
         end = start + batch["target_chapters"] - 1
-        rows = con.execute("SELECT chapter_no,qa_passed FROM chapters WHERE book_id=? AND chapter_no BETWEEN ? AND ?",
+        rows = con.execute("SELECT chapter_no,qa_passed FROM chapter_drafts WHERE book_id=? AND chapter_no BETWEEN ? AND ?",
                            (book_id, start, end)).fetchall()
         completed = len(rows)
         all_ready = completed == batch["target_chapters"]
@@ -1452,8 +1557,9 @@ def run_qa(book_id, payload):
         raise ApiError(400, "八项原创门禁失败：QA必须包含场景因果、跨书换皮和独立AI模板审查")
     start, end = int(payload.get("from") or 1), int(payload.get("to") or 10**9)
     with db() as con:
-        rows = con.execute("SELECT * FROM chapters WHERE book_id=? AND chapter_no BETWEEN ? AND ? ORDER BY chapter_no", (book_id, start, end)).fetchall()
-        all_rows = con.execute("SELECT * FROM chapters WHERE book_id=? ORDER BY chapter_no", (book_id,)).fetchall()
+        rows = con.execute("SELECT * FROM chapter_drafts WHERE book_id=? AND chapter_no BETWEEN ? AND ? ORDER BY chapter_no", (book_id, start, end)).fetchall()
+        all_rows = con.execute("SELECT * FROM chapter_drafts WHERE book_id=? ORDER BY chapter_no", (book_id,)).fetchall()
+        other_rows = con.execute("SELECT book_id,chapter_no,file_path FROM chapters WHERE book_id<>?", (book_id,)).fetchall()
     bodies = {row["chapter_no"]: Path(row["file_path"]).read_text(encoding="utf-8") for row in all_rows}
     long_paras = {}
     for no, body in bodies.items():
@@ -1471,6 +1577,9 @@ def run_qa(book_id, payload):
             structured = {}
     results = []
     shingles = {no: shingle_set(body) for no, body in bodies.items()}
+    other_shingles = [(row["book_id"], row["chapter_no"], shingle_set(read_limited(Path(row["file_path"]), 20_000)))
+                      for row in other_rows if Path(row["file_path"]).exists()]
+    ai_phrases = ("仿佛", "一丝", "一抹", "缓缓", "轻轻", "淡淡", "眼中闪过", "嘴角勾起", "这一刻")
     for row in rows:
         no, title, body = row["chapter_no"], row["title"], bodies[row["chapter_no"]]
         errors, warnings = [], []
@@ -1480,6 +1589,25 @@ def run_qa(book_id, payload):
             errors.append("标题出现在正文")
         if re.search(rf"第\s*0*{no}\s*章", body):
             errors.append("章节编号出现在正文")
+        if re.search(r"(?:补记|续写补充|以下是正文)", body):
+            errors.append("正文含补记或生成过程文字")
+        paragraphs = [re.sub(r"\s+", "", p) for p in re.split(r"\n\s*\n", body) if re.sub(r"\s+", "", p)]
+        short_ratio = sum(len(p) < 35 for p in paragraphs) / max(1, len(paragraphs))
+        consecutive_short = 0
+        max_consecutive_short = 0
+        for paragraph in paragraphs:
+            consecutive_short = consecutive_short + 1 if len(paragraph) < 35 else 0
+            max_consecutive_short = max(max_consecutive_short, consecutive_short)
+        dialogue_ratio = sum(bool(re.match(r"^[“\"『]", p)) for p in paragraphs) / max(1, len(paragraphs))
+        if short_ratio > 0.55:
+            errors.append(f"短段落比例过高:{short_ratio:.1%}")
+        if max_consecutive_short > 5:
+            errors.append(f"连续短段落过多:{max_consecutive_short}")
+        if dialogue_ratio > 0.65:
+            errors.append(f"对话段落比例过高:{dialogue_ratio:.1%}")
+        phrase_count = sum(body.count(phrase) for phrase in ai_phrases)
+        if phrase_count >= 8:
+            errors.append(f"AI模板词密度过高:{phrase_count}")
         if any(no in nos for nos in duplicate_paras.values()):
             errors.append("存在跨章重复长段落")
         for other, other_set in shingles.items():
@@ -1488,6 +1616,13 @@ def run_qa(book_id, payload):
             ratio = len(shingles[no] & other_set) / max(1, min(len(shingles[no]), len(other_set)))
             if ratio > 0.08:
                 warnings.append(f"与第{other:03d}章相似度偏高:{ratio:.2%}")
+        for other_book, other_no, other_set in other_shingles:
+            if not shingles[no] or not other_set:
+                continue
+            ratio = len(shingles[no] & other_set) / max(1, min(len(shingles[no]), len(other_set)))
+            if ratio > 0.12:
+                errors.append(f"与其他本地小说正文相似度过高:{other_book[:8]}/第{other_no:03d}章/{ratio:.2%}")
+                break
         for char in structured.get("characters", []):
             name = str(char.get("name") or "")
             dead_after = char.get("dead_after_chapter")
@@ -1499,21 +1634,31 @@ def run_qa(book_id, payload):
         results.append(result)
     with db() as con:
         for result in results:
-            con.execute("UPDATE chapters SET qa_json=?,qa_passed=? WHERE book_id=? AND chapter_no=?",
-                        (json_text(result), 1 if result["passed"] else 0, book_id, result["chapter_no"]))
+            con.execute("UPDATE chapter_drafts SET qa_json=?,qa_passed=?,status=?,updated_at=? WHERE book_id=? AND chapter_no=?",
+                        (json_text(result), 1 if result["passed"] else 0,
+                         "qa_passed" if result["passed"] else "qa_failed", now_iso(), book_id, result["chapter_no"]))
         if results and all(x["passed"] for x in results):
             con.execute("UPDATE books SET last_qa_revision=revision WHERE id=?", (book_id,))
+        if start == 1 and end == 3:
+            trial_count = con.execute("SELECT COUNT(*) n FROM chapter_drafts WHERE book_id=? AND chapter_no BETWEEN 1 AND 3 AND qa_passed=1",
+                                      (book_id,)).fetchone()["n"]
+            con.execute("UPDATE books SET stage=? WHERE id=?",
+                        ("trial_ready_for_review" if trial_count == 3 else "trial_writing", book_id))
     audit("qa_run", book_id, {"from": start, "to": end, "passed": all(x["passed"] for x in results)})
     batch = refresh_writing_batch(book_id)
     auto_job_id = None
     if batch and batch.get("status") == "ready_for_upload" and batch.get("upload_mode") == "auto":
+        batch_end = batch["from_chapter"] + batch["target_chapters"] - 1
+        promote_drafts(book_id, batch["from_chapter"], batch_end)
+        with db() as con:
+            con.execute("UPDATE writing_batches SET status='promoted',updated_at=? WHERE book_id=?",
+                        (now_iso(), book_id))
         book = get_book(book_id)
         if not book.get("platform_book_id"):
             with db() as con:
                 con.execute("UPDATE writing_batches SET upload_status='blocked_unbound',updated_at=? WHERE book_id=?",
                             (now_iso(), book_id))
         elif batch.get("upload_status") not in {"queued", "running", "completed"}:
-            batch_end = batch["from_chapter"] + batch["target_chapters"] - 1
             auto_job_id, _ = enqueue_upload_job({"book_id": book_id,
                                                  "from": batch["from_chapter"], "to": batch_end})
             with db() as con:
@@ -1528,15 +1673,26 @@ def run_qa(book_id, payload):
 
 def approve_trial(book_id):
     book = get_book(book_id)
-    if book["stage"] != "awaiting_trial_approval":
+    if book["stage"] != "trial_ready_for_review":
         raise ApiError(409, "当前不在三章审批阶段")
+    promote_drafts(book_id, 1, 3)
     with db() as con:
-        rows = con.execute("SELECT qa_passed FROM chapters WHERE book_id=? AND chapter_no BETWEEN 1 AND 3", (book_id,)).fetchall()
-        if len(rows) != 3 or any(not x["qa_passed"] for x in rows):
-            raise ApiError(409, "前三章必须全部通过QA")
         con.execute("UPDATE books SET stage='bulk_writing',updated_at=? WHERE id=?", (now_iso(), book_id))
     audit("trial_approved", book_id)
     return get_book(book_id)
+
+
+def approve_writing_batch(book_id):
+    batch = get_writing_batch(book_id)
+    if not batch or batch.get("upload_mode") != "review" or batch.get("status") != "ready_for_upload":
+        raise ApiError(409, "当前没有等待人工确认的写作批次")
+    end = batch["from_chapter"] + batch["target_chapters"] - 1
+    promote_drafts(book_id, batch["from_chapter"], end)
+    with db() as con:
+        con.execute("UPDATE writing_batches SET status='promoted',updated_at=? WHERE book_id=?",
+                    (now_iso(), book_id))
+    audit("writing_batch_approved", book_id, {"from": batch["from_chapter"], "to": end})
+    return {"book": get_book(book_id), "writing_batch": get_writing_batch(book_id)}
 
 
 def save_assets(book_id, payload):
@@ -1737,6 +1893,11 @@ class Handler(BaseHTTPRequestHandler):
         m = re.fullmatch(r"/v1/books/([0-9a-f]+)/context", path)
         if method == "GET" and m:
             return get_context(m.group(1), (query.get("query") or [""])[0])
+        m = re.fullmatch(r"/v1/books/([0-9a-f]+)/chapter-drafts", path)
+        if method == "GET" and m:
+            start = int((query.get("from") or ["1"])[0])
+            end = int((query.get("to") or [str(10**9)])[0])
+            return get_chapter_drafts(m.group(1), start, end)
         m = re.fullmatch(r"/v1/books/([0-9a-f]+)/writing-batch", path)
         if method == "GET" and m:
             return get_writing_batch(m.group(1))
@@ -1754,6 +1915,9 @@ class Handler(BaseHTTPRequestHandler):
         m = re.fullmatch(r"/v1/books/([0-9a-f]+)/trial-approval", path)
         if method == "POST" and m:
             return approve_trial(m.group(1))
+        m = re.fullmatch(r"/v1/books/([0-9a-f]+)/writing-batch-approval", path)
+        if method == "POST" and m:
+            return approve_writing_batch(m.group(1))
         m = re.fullmatch(r"/v1/books/([0-9a-f]+)/platform-bind-jobs", path)
         if method == "POST" and m:
             book = get_book(m.group(1))

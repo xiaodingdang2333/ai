@@ -44,6 +44,8 @@ Use `scripts/fanqie-account-cache.sh` for cache operations.
 
 Before writing, read and enforce `../fanqie-novel-ideation/references/originality-gate.md`. For every chapter batch, verify scene causality, compare its plot loop with prior chapters and local books, and perform a separate adversarial AI-pattern review. A failed originality gate blocks QA and upload.
 
+For Action-managed projects, chapter writes are two-phase. Save and revise into `草稿暂存/` first; run all mechanical, originality, AI-pattern, and continuity checks there. QA failure must remain editable. The first three chapters become formal only after explicit user approval. Later `auto` batches promote after QA; later `review` batches promote only after explicit approval. Never describe staged chapters as formally saved or uploadable.
+
 1. Identify the book folder under `/home/admin/ai/txt`.
 2. Read the smallest required context:
    - `作品信息_番茄上传.md` if present.

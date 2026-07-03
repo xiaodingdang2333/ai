@@ -211,22 +211,32 @@ def main():
                 chapters.append({
                     "chapter_no": no,
                     "title": f"试读单元{no}",
-                    "body": char * 2600,
+                    "body": char * (2000 if no == 1 else 2600),
                     "summary": f"第{no}章隔离测试摘要",
                 })
             book = data(request(base, f"/v1/books/{book_id}/chapters", token, "POST", {
                 "expected_revision": 1, "chapters": chapters,
             }))
-            assert book["stage"] == "awaiting_trial_approval" and book["revision"] == 2
+            assert book["stage"] == "trial_writing" and book["revision"] == 2
             with sqlite3.connect(state / "state.sqlite3") as con:
                 stored_title, stored_path = con.execute(
-                    "SELECT title,file_path FROM chapters WHERE book_id=? AND chapter_no=1", (book_id,)
+                    "SELECT title,file_path FROM chapter_drafts WHERE book_id=? AND chapter_no=1", (book_id,)
                 ).fetchone()
             assert stored_title == "试读单元1"
             assert Path(stored_path).name == "第001章_试读单元1.md"
 
-            blocked = request(base, f"/v1/books/{book_id}/chapters", token, "POST", {
+            preliminary_qa = data(request(base, f"/v1/books/{book_id}/qa", token, "POST", {"from": 1, "to": 3,
+                "originality_review": {"scene_causality_checked": True, "cross_work_swap_checked": True,
+                "ai_pattern_reviewed": True, "notes": "先验证不合格临时稿仍可覆盖修订，不进入正式正文。"}}))
+            assert preliminary_qa["passed"] is False
+            book = data(request(base, f"/v1/books/{book_id}/chapters", token, "POST", {
                 "expected_revision": 2,
+                "chapters": [{"chapter_no": 1, "title": "试读单元1", "body": "天" * 2600,
+                              "summary": "第1章修订后摘要"}],
+            }))
+            assert book["stage"] == "trial_writing" and book["revision"] == 3
+            blocked = request(base, f"/v1/books/{book_id}/chapters", token, "POST", {
+                "expected_revision": 3,
                 "chapters": [{"chapter_no": 4, "title": "试读单元4", "body": "玄" * 2600, "summary": "不得提前保存"}],
             })
             assert blocked[0] == 409
@@ -239,8 +249,14 @@ def main():
             assert missing_review[0] == 400 and "原创门禁失败" in missing_review[2]["error"]
             qa = data(request(base, f"/v1/books/{book_id}/qa", token, "POST", qa_payload))
             assert qa["passed"] is True
+            drafts = data(request(base, f"/v1/books/{book_id}/chapter-drafts?from=1&to=3", token))
+            assert len(drafts["drafts"]) == 3 and all(x["qa_passed"] for x in drafts["drafts"])
+            assert data(request(base, f"/v1/books/{book_id}/context", token))["book"]["stage"] == "trial_ready_for_review"
             approved = data(request(base, f"/v1/books/{book_id}/trial-approval", token, "POST", {}))
             assert approved["stage"] == "bulk_writing"
+            with sqlite3.connect(state / "state.sqlite3") as con:
+                assert con.execute("SELECT COUNT(*) FROM chapters WHERE book_id=?", (book_id,)).fetchone()[0] == 3
+                assert con.execute("SELECT COUNT(*) FROM chapter_drafts WHERE book_id=?", (book_id,)).fetchone()[0] == 0
             batch = data(request(base, f"/v1/books/{book_id}/writing-batch", token, "PUT", {
                 "approximate_words": 10000, "upload_mode": "review",
             }))
@@ -248,11 +264,11 @@ def main():
             assert batch["upload_mode"] == "review" and batch["status"] == "writing"
 
             chapter4 = data(request(base, f"/v1/books/{book_id}/chapters", token, "POST", {
-                "expected_revision": 2,
+                "expected_revision": 4,
                 "chapters": [{"chapter_no": 4, "title": "新世界开端", "body": "玄" * 2600, "summary": "第4章"}],
             }))
-            assert chapter4["revision"] == 3
-            stale = request(base, f"/v1/books/{book_id}/state", token, "PUT", {"expected_revision": 2, "state": {}})
+            assert chapter4["revision"] == 5
+            stale = request(base, f"/v1/books/{book_id}/state", token, "PUT", {"expected_revision": 4, "state": {}})
             assert stale[0] == 409
             old_jobs = ["b" * 32, "c" * 32]
             with sqlite3.connect(state / "state.sqlite3") as con:

@@ -265,7 +265,8 @@
     "/v1/books/{book_id}/chapters": {
       "post": {
         "operationId": "saveNovelChapters",
-        "summary": "保存或修订最多4章；三章未批准时禁止第4章",
+        "summary": "暂存或覆盖修订最多4章；不会直接写入正式正文",
+        "description": "正文先保存到草稿暂存区，允许QA失败后反复覆盖修订。首次三章经QA并由用户确认后才晋级正式正文；三章未批准时禁止第4章。",
         "x-openai-isConsequential": false,
         "parameters": [{"name": "book_id", "in": "path", "required": true, "schema": {"type": "string"}}],
         "requestBody": {
@@ -289,13 +290,26 @@
             }
           }}}
         },
-        "responses": {"200": {"description": "更新后的阶段和版本"}, "409": {"description": "版本或阶段冲突"}}
+        "responses": {"200": {"description": "临时稿保存后的阶段和版本"}, "409": {"description": "版本或阶段冲突"}}
+      }
+    },
+    "/v1/books/{book_id}/chapter-drafts": {
+      "get": {
+        "operationId": "getNovelChapterDrafts",
+        "summary": "读取待QA、待修订或待人工确认的临时正文",
+        "parameters": [
+          {"name": "book_id", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "from", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1}},
+          {"name": "to", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1}}
+        ],
+        "responses": {"200": {"description": "临时正文、草稿版本和QA状态"}}
       }
     },
     "/v1/books/{book_id}/state": {
       "put": {
         "operationId": "updateNovelState",
-        "summary": "更新人物、时间线、伏笔、章节索引和结构化事实",
+        "summary": "暂存或正式更新人物、时间线、伏笔、章节索引和结构化事实",
+        "description": "有未确认临时稿时只写入待确认状态；正文晋级时才原子应用到正式追踪文件。",
         "x-openai-isConsequential": false,
         "parameters": [{"name": "book_id", "in": "path", "required": true, "schema": {"type": "string"}}],
         "requestBody": {
@@ -311,7 +325,7 @@
     "/v1/books/{book_id}/qa": {
       "post": {
         "operationId": "runNovelQualityChecks",
-        "summary": "检查字数、正文污染、重复和部分状态冲突",
+        "summary": "检查临时稿的字数、格式、AI模板、同质化和连续性",
         "x-openai-isConsequential": false,
         "parameters": [{"name": "book_id", "in": "path", "required": true, "schema": {"type": "string"}}],
         "requestBody": {
@@ -329,10 +343,19 @@
     "/v1/books/{book_id}/trial-approval": {
       "post": {
         "operationId": "approveThreeChapterTrial",
-        "summary": "用户明确批准前三章后开启批量写作",
+        "summary": "用户明确批准后将前三章晋级正式正文并开启批量写作",
         "x-openai-isConsequential": false,
         "parameters": [{"name": "book_id", "in": "path", "required": true, "schema": {"type": "string"}}],
         "responses": {"200": {"description": "批量写作已开放"}}
+      }
+    },
+    "/v1/books/{book_id}/writing-batch-approval": {
+      "post": {
+        "operationId": "approveNovelWritingBatch",
+        "summary": "人工检阅模式下确认并晋级本批临时正文",
+        "x-openai-isConsequential": false,
+        "parameters": [{"name": "book_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "正式保存后的书籍与批次状态"}}
       }
     },
     "/v1/books/{book_id}/platform-bind-jobs": {

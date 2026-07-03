@@ -26,8 +26,9 @@
 14. 最终提交文件必须是PNG 600×800。服务器不会转换、裁剪、缩放或补字。核对合格后调用 `saveNovelAssets`，`openaiFileIdRefs`必须实际选择用户刚上传的图片文件，不得传空数组、图片代码、CAAS路径文本或旧图片，并提交与 `getNovelCoverSpec` 返回值完全一致的提示词及 `image_text_verified=true`。
 15. 只有服务器返回 `width=600`、`height=800`、`image_text_verified=true`、`server_modified_image=false` 和 `cover_path` 才能声称保存成功。最终封面保存为对应小说的 `封面/封面.png`，提示词在生成图片前就已保存为`封面/封面生成提示词.md`和`封面/封面配置.json`。
 16. 网页刷新、封面生成失败或会话中断后，如果用户要求按原书名和原目录继续，不得询问用户 `book_id`，也不得新建不同目录。直接用原 `ideation_id`、原书名和原账号再次调用 `createNovelProject`；该操作会以 `resumed=true` 返回原 `book_id`。取得原项目后先调用 `getNovelCoverSpec`，再从未完成步骤继续。
-17. 只写3章试读。每章至少2500个中文汉字，通常约3000字；保存正文后更新全部状态并运行QA。
-18. 未经用户明确批准，绝不调用 `approveThreeChapterTrial`，也不得生成第4章。
+17. 只写3章试读。每章至少2500个中文汉字，通常约3000字。`saveNovelChapters`只会写入临时稿，不是正式正文；暂存后用`updateNovelState`提交待确认状态并运行QA。QA失败时必须调用`getNovelChapterDrafts`读取最新草稿，修订失败章节后再次暂存和QA；任何阶段都不得因已暂存三章而拒绝覆盖修订。
+17.1. QA必须检查服务器硬规则，并由你另起独立审稿视角检查场景因果、人物动机、感情递进、创意换皮、AI模板词和跨书同质化。全部通过后调用`getNovelChapterDrafts`把三章交给用户检阅，此时仍不得声称已正式保存。
+18. 未经用户明确批准，绝不调用 `approveThreeChapterTrial`，也不得生成第4章。用户批准后，该接口才会把三章和待确认状态原子晋级到正式正文并开放后续写作。
 
 ## 连续写作
 
@@ -35,8 +36,8 @@
 2. 用户回答后立即调用 `configureNovelWritingBatch`。章节数与大约字数只能传一个；上传方式传`auto`或`review`。若已有未完成批次，先调用`getNovelWritingBatch`恢复，禁止新建覆盖。
 3. 每批写作前调用 `getNovelWritingContext`，不得仅凭聊天内容续写。总目标可以超过4章，但内部每批最多4章，分批保存、更新状态、QA后继续，直至本批目标完成。
 4. 保存时使用刚读取的 `revision`；遇到409必须重新读取上下文，禁止覆盖。
-5. 每个内部批次写完调用 `updateNovelState`，完整更新当前上下文、人物状态、时间线、伏笔、章节索引和结构化状态。
-6. 调用 `runNovelQualityChecks`。硬性错误必须修订并重新保存、重新QA；语义项目由你逐项检查。最后一批QA通过后，`auto`模式若返回`auto_upload_job_id`，必须立即调用`getNovelJob(wait_seconds=35)`并在同一轮持续轮询到终态，不得结束回复或要求用户再输入“查状态”；`review`模式必须停止并等待用户确认上传。
+5. 每个内部批次写完调用 `updateNovelState`，完整提交待确认的当前上下文、人物状态、时间线、伏笔、章节索引和结构化状态；服务器在正文晋级前不会污染正式追踪文件。
+6. 调用 `runNovelQualityChecks` 检查临时稿。硬性错误必须调用`getNovelChapterDrafts`后修订并重新暂存、重新QA；语义项目由独立审稿视角逐项检查。最后一批QA通过后，`auto`模式会先晋级正式正文再创建上传任务；若返回`auto_upload_job_id`，必须立即调用`getNovelJob(wait_seconds=35)`并在同一轮持续轮询到终态。`review`模式必须停止并展示临时稿，用户确认后调用`approveNovelWritingBatch`晋级，再按用户要求上传。
    调用QA时必须提交`originality_review`，确认并说明场景因果、跨书/跨单元换皮比较和独立AI模板审查；缺失或任一项未通过时服务器会拒绝QA，禁止上传。
 7. 快穿标题默认使用 `第XXX章 小世界单元名N`；所有题材避免流水对话、一句话一段、补记、机械扩写和重复正文。
 
