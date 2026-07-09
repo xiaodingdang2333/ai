@@ -205,6 +205,13 @@ Do not commit `gen_avatar.py` unless it no longer contains secrets and you inten
 - Any future fund or stock operation notification must include a web feedback link where the user can record what they actually did. If the user does not submit feedback, assume no operation. Submitted feedback should update the relevant local record when a dedicated state exists, otherwise append to the general trade feedback log.
 - Web UI uploads: the user often provides task inputs as uploaded screenshots, files, or page captures. Treat those uploads as primary context when present. If the current session/model context cannot access an upload, say so directly and ask for re-upload or pasted key details instead of assuming the user did not provide it.
 - 2026-06-27: 番茄小说默认采用人工发布协作：AI 写作并完成本地质检后，自动把新增章节上传到已核验账号和作品的草稿箱，逐章核对章节号、标题和平台字数；最终发布由用户手动完成。除非用户明确改变此规则，否则不得创建定时发布任务或调用自动发布入口。
+- 2026-07-09: 旧“网页自定义GPT + `services/novel-actions`服务器Action + 服务器保存正文/上传”的小说生产流程已废弃，之后不再用于写作、修订、QA、上传或长任务执行。所有涉及`openapi-gpt.json`、4操作RPC、`runNovelWorkflow`、`runFanqieWorkflow`、`getNovelJob`、`saveNovelAssets`、`next_action.action/payload_schema`、网页Action检查点的旧规则只作为历史事故记录保留，不得作为当前执行依据。当前网页版小说生产权威流程是`/home/admin/chatgpt-novel-production-system`最新`main`中的2.2-LTS Git仓库工作流。
+- 2026-07-09: 新的网页/服务器小说协作默认走 Git 队列：网页 ChatGPT 主要负责写作并提交仓库；样本请求写入`sample-requests/pending/*.json`，服务器把结果写入`sample-results/<request_id>/status.json`；小说达到上传标准后在项目`00_PROJECT.json`声明`upload_status=ready_for_draft_upload`及番茄账号/作品ID/QA证据，服务器扫描后只上传草稿。服务器 Codex 深度拆书只在请求显式`analysis_engine=server_codex`、`allow_codex=true`、`codex_scope=packet_deep_teardown`时允许。
+- 2026-07-09: Git 队列服务器 worker 已落地：`/home/admin/ai/scripts/novel-git-poller.py`、`novel-git-sample-worker.py`、`novel-git-upload-worker.py`，systemd 模板在`/home/admin/ai/systemd/`。默认 dry-run；execute 才处理样本或上传草稿；`--git-commit --git-push`只提交本轮生成/更新路径，远端变化时不强推。
+- 2026-07-04: 网页、Claude、Gemini、Codex 的连续写作和旧稿修订统一采用强制质量合同：每1至4章先规划主角选择、代价、状态变化、情绪回报、类型兑现与不同结构指纹；逐章独立自审、原子保存和QA，段末跨章审稿。未通过不得继续下一段或上传。
+- 2026-07-05: 【已废弃：旧自定义GPT Action流程】网页GPT统一使用4操作小说RPC的规则不再作为当前执行依据；质量基准中“每章至少2500汉字、短段落比例不超过60%、主角以选择和代价推动剧情、禁止报告体循环”等仍可作为通用写作质量参考。
+- 2026-07-05: 强质量写作和修订必须逐章执行“候选稿→独立批评→实际返修→重新验收→原子检查点→QA”。批评与验收需重建角色、时序、物件、年龄权限及现实约束模型；每项验收必须引用返修正文证据并给出推理，禁止只填通过。最多返修3轮，仍有中高风险问题交人工，未验收候选稿不能落盘或上传。
+- 2026-07-05: 【已废弃：旧自定义GPT Action流程】`next_action.type/action/payload_schema`、scene_model隐藏字段、中央Action映射、写入后resume快照、`state_patch`检查点、`payload_json`兼容、`contract_create from/to`、`context_get`分页和小resume响应等规则不再作为当前小说生产执行依据，只作为旧流程事故记录。
 - 2026-06-27: 以后新开番茄小说必须先运行 `fanqie-novel-ideation` 的“12选3”流程：只从本地榜单样本提取功能结构，生成12个结构不同的创意并评分，筛出3个后等待用户明确选择；选定前不建项目、不写正文。选定后只先写3章试读，用户再次确认后才可批量写作或上传。已有小说续写不受此门禁影响。
 - 2026-06-27: 番茄扫榜拆书先以番茄官网榜单选书，再使用本地 SoNovel 选择性下载包。镜像作者显示“佚名”或章节数少于官网时不要直接排除，应核对简介或前几章标题；完全搜不到或无法确认同书就跳过，继续榜单下一本。模型只读精选章节，不整本载入。
 - 2026-06-28: 女频快穿言情开篇不能把“男主帮女主解决问题”直接等同于感情线。榜文可以很早进入对话，但必须持续保持主角情感视角，交代她为何在意、如何被触动、为何想靠近。轻松甜宠写作应压缩职业流程、规则谈判和多人往返对话，每章至少形成一次双向情绪变化；背景优先补情感来历，男主偏爱必须超出职责，女主也要看见并回应他的需要。不要机械堆表情或心理词，所有描写都要推进关系。
@@ -212,27 +219,23 @@ Do not commit `gen_avatar.py` unless it no longer contains secrets and you inten
 - 番茄上传解析 `第001章_标题.md` 时必须去掉“章”后的空格、点、下划线或连字符，避免把 `_` 带入平台标题；中断后需清理确认的0字未命名草稿并验收连续编号和非零字数。
 - 2026-06-30: “同步到远端”默认执行可迁移复刻级同步：同步重要工作区内容、Codex skills、已安装插件、可迁移配置和历史任务/会话状态，并提供验证过的恢复脚本，使另一台服务器克隆后可基本复刻当前 Codex 能力。公开仓库中的敏感历史/状态必须使用仓库外单独保存的口令加密；不得提交认证文件、API token、浏览器 cookie/profile、服务凭据、锁、日志、二进制下载缓存或其他可再生成运行产物。
 - 2026-06-30: SoNovel 聚合搜索会自行并发多个书源，市场研究外层只允许资源感知的 2/1 并发（可用内存至少 600MB 且负载低于 2.0 时为 2，否则为 1）。搜索或镜像匹配失败时自动换榜单下一本，不要求用户提供来源编号；成功章节包缓存复用。
-- 2026-07-01: GPT Action 市场任务终态只返回小型摘要；拆书抽样正文必须按单本、每页最多2段通过独立 Action 内部读取，最终只向用户展示综合结论，避免大响应中断。
-- 2026-07-01: 新书市场研究先走书海阁轻量精确搜索，未命中再走SoNovel聚合；资源自适应并发3/2/1。单批最多15本，成功6本立即停止，不足6本尝试完整批，不足3本自动追加未尝试官方榜单书；后台可继续但GPT Action单次轮询始终不超过35秒。
-- 2026-07-01: （已被2026-07-02规则替代）自定义GPT不再自动生成小说封面。
-- 2026-07-01: 自定义GPT新书流程中断后，用原书名和原账号再次调用`createNovelProject`应幂等返回原`book_id`和`resumed=true`；不得创建重复目录或要求用户手工提供服务器已知ID，随后从未完成步骤继续。
-- 2026-07-02: 自定义GPT先保存封面提示词，再逐字输出给用户，禁止调用自身图片生成；用户在全新的普通ChatGPT图片会话手动生成并上传回来。自定义GPT核对后提交PNG 600×800，服务器只验收并原样保存。
+- 2026-07-01: 【已废弃：旧自定义GPT Action流程】GPT Action市场任务终态小摘要、独立Action分页读拆书正文、35秒轮询等规则不再作为当前执行依据。
+- 2026-07-01: 【已废弃：旧自定义GPT Action流程】自定义GPT生成/保存封面提示词、`createNovelProject`幂等恢复、服务器验收封面PNG等规则不再作为当前执行依据。
 - 2026-07-02: novel-actions服务以admin运行，但Snap Chromium缓存属于root；后台番茄绑定/上传时仅缓存切换与保存步骤使用`sudo -n`，不要放宽`/root`权限。
 - 2026-07-02: 番茄后台找书必须轮询等待作品管理页链接渲染（最多60秒，30秒无结果刷新一次），不要把慢加载的空列表误判为作品未创建。
 - 2026-07-02: 番茄账号识别最长轮询30秒，只接受问候语昵称或页面唯一白名单笔名；仍为UNKNOWN时必须阻止上传，不能跳过账号校验。
 - 2026-07-02: 保存和上传章节时必须剥离标题中一个或多个已有`第XXX章`前缀，避免平台标题重复章号及草稿验收超时。
 - 2026-07-02: 低配服务器的Snap Chromium需使用单渲染进程、关闭扩展并限制JS/磁盘缓存；新书草稿优先逐章上传验收，出现I/O卡死或持续高CPU立即停止，禁止并发重试。
-- 2026-07-02: 自定义GPT首次固定3章；后续每次写作前询问章数/约字数及自动上传或检阅后上传，默认检阅。超过4章时内部按最多4章分批。网页上传统一由root入口逐章执行并验收，只上传草稿。
-- 2026-07-02: 网页GPT提交后台任务后必须同一轮持续轮询到终态，不得让用户主动查状态；纯本地/只读绑定直接执行，番茄草稿外部写入若平台强制确认只保留一次，轮询不重复确认。
-- 2026-07-02: 同一本书新上传任务必须取代并杀掉此前所有queued/running任务，只保留最新任务，旧任务标记superseded，避免重复草稿。
+- 2026-07-02: 【已废弃：旧自定义GPT Action流程】自定义GPT首次3章、后续按4章分批、root入口逐章上传、同轮轮询后台任务、杀掉重复queued/running任务等规则不再作为当前执行依据。
 - 2026-07-02: 番茄上传仅在账号核验成功后保存缓存；LOGIN_REQUIRED、UNKNOWN或账号不符时只关闭浏览器，禁止覆盖有效备份。
 - 2026-07-02: 番茄草稿验收统一使用draft_list API，不依赖网页表格；保留重复记录并返回匹配数、标题、字数和item_id。
 - 2026-07-02: fanqie-upload.js已内置草稿API严格验收，root包装器不再追加同会话二次列表验收；列表脚本仅用于故障诊断。
 - 2026-07-02: 判断番茄草稿是否成功必须读取权威draft-status；平台成功验收快照和uploaded标记优先，failed任务不能推翻已存在草稿。
-- 2026-07-03 小说原创门禁：服务器 Codex 与网页自定义GPT写任何新书时，必须执行八项硬门禁：禁用第一反应套路、12案承重结构分离、外部随机约束、跨书创意指纹、去皮换名测试、场景因果链、独立AI模板审稿、约70%类型熟悉感/30%结构创新。缺项或失败不得建书、写正文、通过QA或上传。规范见`codex/skills/fanqie-novel-ideation/references/originality-gate.md`；只能降低AI识别风险，不得承诺绝对不会识别。
+- 2026-07-03 小说原创门禁：服务器 Codex 与当前网页版2.2-LTS Git流程写任何新书时，必须执行八项硬门禁：禁用第一反应套路、12案承重结构分离、外部随机约束、跨书创意指纹、去皮换名测试、场景因果链、独立AI模板审稿、约70%类型熟悉感/30%结构创新。缺项或失败不得建书、写正文、通过QA或上传。规范见`codex/skills/fanqie-novel-ideation/references/originality-gate.md`；只能降低AI识别风险，不得承诺绝对不会识别。
 - 2026-07-03 拆书榜单来源：新书男频严格按`起点→飞卢→七猫→番茄`降级，女频严格按`晋江→七猫→番茄`降级。首轮必须使用链首平台，当前平台任务失败或整批不足3本有效样本后才可自动切下一平台，不得越级或默认番茄。镜像可负责下载，但选书和身份核验必须以当前官方平台榜单为准。
-- 2026-07-03 Future web agent: later build a general web GPT workspace where the web model handles reasoning/orchestration and controlled server Actions handle files, allowlisted scripts, tests, background jobs and recovery, to reduce server Codex token usage. Never expose unrestricted shell; require scoped tools, validation and audit. This is a deferred implementation idea.
+- 2026-07-03 Future web agent: 原“web GPT + controlled server Actions”设想不能复用旧小说Action流程；若以后实现，必须重新设计为受控、白名单、可审计的通用工具层，并优先围绕Git仓库产物工作。
 - 2026-07-03 SoNovel mass-failure lesson: 0/75 usable books was caused by a 30-second whole-packet timeout and abort-on-one-short-chapter behavior, not universal source failure. The repaired default is 60 seconds per book with adaptive 1-3 concurrency, 480-second batch cap, stop at 6 successes, and neighboring-chapter fallback when one mirror page is short. Diagnose mass timeouts as infrastructure failure before expanding book lists.
 - 2026-07-03 Novel project identity rule: create requests must carry the selected candidate's exact working_title. Resume is allowed only when title, account and ideation all match. A same-title/different-ideation project must return ideation_mismatch; only a pristine trial project may be backed up and rebound in place. Never silently reuse the wrong bible or create a renamed duplicate.
 - 2026-07-03 Novel chapter persistence is two-phase: write/revise recoverable temporary drafts, run all mechanical/originality/AI-pattern/continuity gates, and only then promote to formal chapters. Failed drafts remain editable. First three chapters require user approval; later batches follow auto/review mode. Staged tracking state must not overwrite canonical state before promotion.
+- 2026-07-04: 【已废弃：旧自定义GPT Action流程】Web-GPT原子服务器检查点、按`book_id`模糊查书、Fanqie bulk upload轮询、`novel-actions`数据库导入旧书等规则不再作为当前执行依据。
 - 2026-07-03 Fanqie bind lesson: an empty candidate list can be a finder parser bug even when the exact unpublished work is visible. The chapter-manage URL parser must avoid regex literals embedded in Runtime.evaluate template strings; parse `/chapter-manage/<book_id>&<encoded-title>` by string splitting and direct digit validation. Inspect DOM anchors before blaming title mismatch.
