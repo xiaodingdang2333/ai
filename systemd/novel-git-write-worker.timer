@@ -1,0 +1,11 @@
+[Unit]
+Description=Run explicit server Codex novel write worker every two minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=2min
+AccuracySec=20s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -15,6 +15,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This directory is primarily a Chinese web-novel writing workspace, not a conventional software repository. Most work should happen inside individual novel project directories, each of which uses the same artifact structure for long-form writing.
 
+## 2026-07-09 Web/Server Novel Workflow
+
+- The old custom GPT Action workflow under `services/novel-actions` is deprecated for novel writing, QA, revision, upload, and long-task orchestration.
+- The authoritative web workflow is `/home/admin/chatgpt-novel-production-system` latest `main`, currently routed by `CURRENT.json` to the 2.2-LTS Git workflow.
+- Web ChatGPT should write through Git project files by default. Server workers only consume explicit Git queues: `sample-requests/pending/*.json`, `server-write-requests/pending/*.json`, and upload-ready `novels/*/00_PROJECT.json`.
+- Server-side Codex writing is allowed only when a request declares `allow_server_codex=true`, `target_mode=continue_formal`, and `quality_profile=v2.2-LTS-strong`; it consumes server Codex quota.
+- Fanqie draft upload must independently re-run server-side quality gates before upload. Do not upload based only on a chat claim that QA passed.
+
 Active novel projects include:
 
 - `渡厄簿：她不替天命受罚了/` — current priority project. Female-oriented Fanqie quick-transmigration + xianxia revenge story by pen name `桃枝醒醒`. The first 10 chapters, settings, outlines, upload info, and tracking files exist.

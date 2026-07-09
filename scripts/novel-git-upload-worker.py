@@ -12,6 +12,7 @@ Default mode is dry-run.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import shutil
@@ -24,6 +25,7 @@ from typing import Any
 
 DEFAULT_REPO = Path("/home/admin/chatgpt-novel-production-system")
 EXPORT_ROOT = Path("/home/admin/ai/output/novel-git-upload")
+QUALITY_GATE_ROOT = EXPORT_ROOT / "quality-gates"
 FANQIE_UPLOAD = Path("/home/admin/ai/codex/skills/fanqie-upload/scripts/fanqie-upload.js")
 
 ACCOUNT_PORTS = {
@@ -50,6 +52,25 @@ def load_json(path: Path) -> dict[str, Any]:
 def write_json(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def compact_text(text: str) -> str:
+    lines = text.splitlines()
+    if lines and lines[0].lstrip().startswith("#"):
+        lines = lines[1:]
+    return re.sub(r"\s+", "", "\n".join(lines))
+
+
+def han_count(text: str) -> int:
+    return len(re.findall(r"[\u4e00-\u9fff]", compact_text(text)))
+
+
+def git_blob_sha(path: Path, repo: Path) -> str:
+    result = run_git(repo, ["hash-object", str(path.relative_to(repo))], check=False)
+    if result.returncode == 0:
+        return result.stdout.strip()
+    data = path.read_bytes()
+    return hashlib.sha1(f"blob {len(data)}\0".encode() + data).hexdigest()
 
 
 def run_git(repo: Path, args: list[str], check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -205,12 +226,164 @@ def run_command(command: list[str], execute: bool) -> dict[str, Any]:
     }
 
 
+def formal_chapter_file(project_path: Path, no: int) -> Path | None:
+    matches = sorted((project_path / "formal").glob(f"CH{no:03d}_*.md"))
+    return matches[0] if len(matches) == 1 else None
+
+
+def quality_output_dir(repo: Path, project_path: Path, execute: bool) -> Path:
+    if execute:
+        return project_path / "audits"
+    return QUALITY_GATE_ROOT / safe_name(project_path.name, "book")
+
+
+def run_repo_script(repo: Path, command: list[str]) -> dict[str, Any]:
+    result = subprocess.run(command, cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    return {
+        "command": command,
+        "status": "ok" if result.returncode == 0 else "failed",
+        "returncode": result.returncode,
+        "stdout_tail": (result.stdout or "")[-4000:],
+        "stderr_tail": (result.stderr or "")[-4000:],
+    }
+
+
+def run_quality_gate(repo: Path, project_path: Path, data: dict[str, Any], execute: bool) -> tuple[bool, dict[str, Any], list[Path]]:
+    upload_range = data.get("upload_range") if isinstance(data.get("upload_range"), dict) else {}
+    from_chapter = int(upload_range.get("from_chapter") or 1)
+    to_chapter = int(upload_range.get("to_chapter") or 999999)
+    formal = project_path / "formal"
+    available = sorted(
+        no
+        for no in (chapter_no_from_name(path) for path in formal.glob("CH*.md"))
+        if no is not None
+    )
+    out_dir = quality_output_dir(repo, project_path, execute)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    p0_output = out_dir / f"SERVER_UPLOAD_P0_GATE_CH{from_chapter:03d}_CH{to_chapter:03d}_{stamp}.json"
+    ready_output = out_dir / f"SERVER_UPLOAD_READY_GATE_CH{from_chapter:03d}_CH{to_chapter:03d}_{stamp}.json"
+    summary_output = out_dir / f"SERVER_UPLOAD_QUALITY_GATE_CH{from_chapter:03d}_CH{to_chapter:03d}_{stamp}.json"
+
+    errors: list[str] = []
+    chapter_rows: list[dict[str, Any]] = []
+    if not available:
+        errors.append("no formal chapters found")
+    else:
+        for no in range(from_chapter, to_chapter + 1):
+            path = formal_chapter_file(project_path, no)
+            if path is None:
+                errors.append(f"missing or duplicate formal chapter CH{no:03d}")
+                continue
+            text = path.read_text(encoding="utf-8")
+            chars = han_count(text)
+            row = {
+                "chapter": f"CH{no:03d}",
+                "path": str(path.relative_to(repo)),
+                "han_count": chars,
+                "blob_sha": git_blob_sha(path, repo),
+            }
+            chapter_rows.append(row)
+            if chars < 2500:
+                errors.append(f"CH{no:03d} han_count {chars} < 2500")
+
+    latest = max(available) if available else 0
+    reference_to = min(max(1, latest), max(10, to_chapter))
+    reference_to = min(reference_to, latest) if latest else 0
+    reference_from = 1
+    p0_result: dict[str, Any] | None = None
+    ready_result: dict[str, Any] | None = None
+
+    if not errors and reference_to >= reference_from:
+        p0_cmd = [
+            sys.executable,
+            str(repo / "scripts" / "p0_dialogue_visual_hard_gate_v2.py"),
+            "--formal-dir",
+            str(formal.relative_to(repo)),
+            "--reference-from",
+            str(reference_from),
+            "--reference-to",
+            str(reference_to),
+            "--target-from",
+            str(from_chapter),
+            "--target-to",
+            str(to_chapter),
+            "--output-json",
+            str(p0_output.relative_to(repo) if execute else p0_output),
+        ]
+        p0_result = run_repo_script(repo, p0_cmd)
+        if p0_result["status"] != "ok":
+            errors.append("P0 dialogue visual hard gate failed to execute")
+        elif p0_output.exists():
+            p0_payload = load_json(p0_output)
+            p0_status = p0_payload.get("p0_manifest_result")
+            if p0_status != "PASS":
+                errors.append(f"P0 manifest result is {p0_status}, expected PASS")
+
+    if not errors:
+        ready_cmd = [
+            sys.executable,
+            str(repo / "scripts" / "validate_ready_promotion_v22.py"),
+            "--formal-dir",
+            str(formal.relative_to(repo)),
+            "--p0-manifest",
+            str(p0_output.relative_to(repo) if execute else p0_output),
+            "--from-chapter",
+            str(from_chapter),
+            "--to-chapter",
+            str(to_chapter),
+            "--output-json",
+            str(ready_output.relative_to(repo) if execute else ready_output),
+        ]
+        ready_result = run_repo_script(repo, ready_cmd)
+        if ready_result["status"] != "ok":
+            errors.append("READY promotion current-blob validation failed")
+        elif ready_output.exists():
+            ready_payload = load_json(ready_output)
+            if ready_payload.get("promotion_result") != "PASS" or ready_payload.get("ready_after_strong_qa_allowed") is not True:
+                errors.append("READY promotion validator did not allow upload")
+
+    evidence = data.get("ready_evidence") if isinstance(data.get("ready_evidence"), dict) else {}
+    if evidence.get("qa_passed") is not True:
+        errors.append("ready_evidence.qa_passed is not true")
+    if evidence.get("current_blob_validated") is not True:
+        errors.append("ready_evidence.current_blob_validated is not true")
+
+    summary = {
+        "gate": "SERVER_UPLOAD_QUALITY_GATE_V1",
+        "checked_at": now_iso(),
+        "project": str(project_path.relative_to(repo)),
+        "book_title": data.get("book_title"),
+        "upload_range": {"from_chapter": from_chapter, "to_chapter": to_chapter},
+        "result": "PASS" if not errors else "FAIL",
+        "blocking_reasons": errors,
+        "chapters": chapter_rows,
+        "p0_output": str(p0_output),
+        "ready_output": str(ready_output),
+        "p0_command": p0_result,
+        "ready_command": ready_result,
+    }
+    write_json(summary_output, summary)
+    changed = [path for path in [p0_output, ready_output, summary_output] if path.exists() and path.is_relative_to(repo)]
+    return not errors, summary, changed
+
+
 def process_candidate(repo: Path, project_file: Path, execute: bool) -> dict[str, Any]:
     data = load_json(project_file)
     project_path = project_file.parent
     errors = validate_candidate(project_path, data)
     if errors:
         return {"project_file": str(project_file.relative_to(repo)), "status": "invalid", "errors": errors}
+
+    quality_ok, quality, quality_paths = run_quality_gate(repo, project_path, data, execute)
+    if not quality_ok:
+        return {
+            "project_file": str(project_file.relative_to(repo)),
+            "status": "quality_gate_failed",
+            "errors": quality["blocking_reasons"],
+            "quality_gate": quality,
+            "quality_report_paths": [str(path.relative_to(repo)) for path in quality_paths],
+        }
 
     export_dir, manifest = export_project(repo, project_path, data)
     if manifest["chapter_count"] <= 0:
@@ -301,6 +474,8 @@ def process_candidate(repo: Path, project_file: Path, execute: bool) -> dict[str
         "status": status,
         "export_dir": str(export_dir),
         "chapter_count": manifest["chapter_count"],
+        "quality_gate": quality,
+        "quality_report_paths": [str(path.relative_to(repo)) for path in quality_paths],
         "scan": scan,
         "drafts": drafts,
         "verify": verify,
@@ -340,6 +515,9 @@ def main() -> int:
             for item in results
             if item["status"] == "uploaded_to_drafts"
         ]
+        for item in results:
+            for report in item.get("quality_report_paths", []):
+                updated.append(repo / report)
         git_result = safe_git_record(repo, updated, f"upload: mark Fanqie drafts uploaded {now_iso()}", args.git_push)
     output = {"execute": args.execute, "processed": results, "failed_count": len(failed), "git": git_result}
     if args.json:

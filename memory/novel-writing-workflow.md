@@ -11,11 +11,13 @@
 ## 2026-07-09 Git 驱动的网页/服务器分工
 
 - 主要写作默认由网页版 ChatGPT 执行，以节约服务器 Codex token；网页版必须使用 `/home/admin/chatgpt-novel-production-system` 的 2.2-LTS Git 工作流和同一套质量标准。
-- 服务器侧只通过 Git 队列接收任务：样本需求在 `sample-requests/pending/*.json`，样本结果在 `sample-results/<request_id>/status.json`，番茄上传就绪由各小说 `00_PROJECT.json` 的上传字段声明。
+- 服务器侧只通过 Git 队列接收任务：样本需求在 `sample-requests/pending/*.json`，样本结果在 `sample-results/<request_id>/status.json`，显式服务器代写请求在 `server-write-requests/pending/*.json`，番茄上传就绪由各小说 `00_PROJECT.json` 的上传字段声明。
 - 服务器样本流水线默认脚本化完成发现、合法性判断、SoNovel/允许来源获取、清洗、packet、基础统计和 Git 回写；只有请求显式写明 `analysis_engine=server_codex`、`allow_codex=true`、`codex_scope=packet_deep_teardown` 时，才允许服务器 Codex 对 packet 做深度拆书。
 - 番茄草稿上传由服务器扫描 Git 中 `upload_status=ready_for_draft_upload` 的项目后执行，必须核验 `fanqie_account`、`expected_author_name`、`fanqie_book_id`、`ai_use`、QA 证据和 current-blob 证据；默认只上传草稿，不自动发布。
+- 服务器代写只在请求显式写明 `allow_server_codex=true`、`target_mode=continue_formal`、`quality_profile=v2.2-LTS-strong` 时执行；这会消耗服务器 Codex quota。代写完成后仍必须跑 2.2-LTS P0/READY 质量门禁，番茄上传 worker 还会独立复验，不能只凭网页或服务器自称“已通过”上传。
 - 多个网页版会话可以并行写不同书，但每本书必须有独立项目/分支/状态文件，通过 Git 快照接力，不依赖单个长聊天保存全部上下文。
 - 服务器已新增 Git worker 入口：`/home/admin/ai/scripts/novel-git-poller.py`、`novel-git-sample-worker.py`、`novel-git-upload-worker.py`；对应 systemd 模板在 `/home/admin/ai/systemd/`。worker 默认 dry-run，execute 模式才写文件/上传，且 Git 回写只提交本轮生成路径，不强推。
+- 服务器 Git worker 还包括 `/home/admin/ai/scripts/novel-git-write-worker.py`，用于上述显式代写队列。当前 timer：poller 每1分钟，upload 每1分钟，write 每2分钟，sample 每5分钟。
 
 ## 强制读取顺序
 
