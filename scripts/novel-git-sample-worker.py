@@ -24,6 +24,7 @@ from typing import Any
 
 DEFAULT_REPO = Path("/home/admin/chatgpt-novel-production-system")
 SONOVEL_CLIENT = Path("/home/admin/ai/scripts/sonovel-client.js")
+CODEX_BIN = Path("/root/.nvm/versions/node/v22.22.3/bin/codex")
 
 ALLOWED_BASES = {
     "public_domain",
@@ -125,12 +126,68 @@ def run_packet(book: dict[str, Any], timeout_seconds: int) -> tuple[bool, str]:
     return False, error or output or f"packet command failed with exit {result.returncode}"
 
 
-def status_for_request(request: dict[str, Any], request_path: Path, repo: Path, execute: bool, timeout_seconds: int) -> dict[str, Any]:
+def run_codex_teardown(repo: Path, request: dict[str, Any], result_dir: Path, packet_paths: list[Path], timeout_seconds: int) -> tuple[bool, str, Path | None]:
+    if not packet_paths:
+        return False, "no packet files available for Codex teardown", None
+    teardown_dir = result_dir / "teardowns"
+    teardown_dir.mkdir(parents=True, exist_ok=True)
+    output_path = teardown_dir / "SERVER_CODEX_DEEP_TEARDOWN.md"
+    relative_packets = [str(path.relative_to(repo)) for path in packet_paths]
+    prompt = (
+        "你是中文网文市场拆书分析助手。只读取下面 packet 文件，提取功能结构、钩子、节奏、情绪回报、"
+        "角色引擎、差异化风险和可迁移创作启发。不得复用原文措辞、人物名、标志性事件或完整情节序列。\n\n"
+        f"目标平台：{request.get('target_platform')}\n"
+        f"题材：{request.get('genre')}\n"
+        f"研究目的：{request.get('research_purpose')}\n"
+        "packet 文件：\n"
+        + "\n".join(f"- {item}" for item in relative_packets)
+        + "\n\n输出中文 Markdown，包含：样本有效性、共性结构、差异结构、开篇钩子、"
+        "商业转化建议、原创避雷、可用于新书的非复制型机制。"
+    )
+    command = [
+        str(CODEX_BIN),
+        "exec",
+        "--cd",
+        str(repo),
+        "--sandbox",
+        "read-only",
+        "--ask-for-approval",
+        "never",
+        "--output-last-message",
+        str(output_path),
+        prompt,
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired:
+        return False, f"Codex teardown timed out after {timeout_seconds}s", None
+    if result.returncode == 0 and output_path.exists():
+        return True, str(output_path.relative_to(repo)), output_path
+    return False, ((result.stderr or "") + "\n" + (result.stdout or "")).strip()[-2000:], None
+
+
+def status_for_request(
+    request: dict[str, Any],
+    request_path: Path,
+    repo: Path,
+    execute: bool,
+    timeout_seconds: int,
+    run_codex: bool,
+    codex_timeout_seconds: int,
+) -> dict[str, Any]:
     request_id = str(request.get("request_id") or request_path.stem)
     result_dir = repo / "sample-results" / request_id
     packet_dir = result_dir / "packets"
     books = request.get("books") if isinstance(request.get("books"), list) else []
     status_books: list[dict[str, Any]] = []
+    packet_paths: list[Path] = []
     effective = 0
 
     for index, book in enumerate(books, 1):
@@ -168,6 +225,7 @@ def status_for_request(request: dict[str, Any], request_path: Path, repo: Path, 
             packet_dir.mkdir(parents=True, exist_ok=True)
             packet_path = packet_dir / f"{index:03d}_{safe_slug(title, 'book')}.txt"
             packet_path.write_text(output + "\n", encoding="utf-8")
+            packet_paths.append(packet_path)
             effective += 1
             status_books.append({
                 **base_record,
@@ -199,11 +257,31 @@ def status_for_request(request: dict[str, Any], request_path: Path, repo: Path, 
     }
 
     if request.get("analysis_engine") == "server_codex" and request.get("allow_codex") is True:
+        codex_status = "todo_after_packet_ready" if effective else "blocked_no_effective_packet"
+        codex_teardown_path = None
+        codex_error = None
+        if execute and run_codex and effective:
+            ok, detail, output_path = run_codex_teardown(repo, request, result_dir, packet_paths, codex_timeout_seconds)
+            if ok:
+                codex_status = "completed"
+                codex_teardown_path = detail
+                result["teardown_dir"] = str((result_dir / "teardowns").relative_to(repo))
+                changed_path = output_path
+            else:
+                codex_status = "failed"
+                codex_error = detail
+                changed_path = None
+        else:
+            changed_path = None
         result["server_codex_deep_teardown"] = {
             "requested": True,
-            "status": "todo_after_packet_ready" if effective else "blocked_no_effective_packet",
+            "status": codex_status,
             "scope": request.get("codex_scope"),
         }
+        if codex_teardown_path:
+            result["server_codex_deep_teardown"]["teardown_path"] = codex_teardown_path
+        if codex_error:
+            result["server_codex_deep_teardown"]["error"] = codex_error
         if execute:
             todo = result_dir / "SERVER_CODEX_DEEP_TEARDOWN_TODO.md"
             todo.write_text(
@@ -214,11 +292,22 @@ def status_for_request(request: dict[str, Any], request_path: Path, repo: Path, 
                 "- Rule: extract functional structure only; do not reproduce source prose.\n",
                 encoding="utf-8",
             )
+            if changed_path:
+                result.setdefault("_extra_changed_paths", []).append(str(changed_path))
 
     return result
 
 
-def process_requests(repo: Path, execute: bool, limit: int, timeout_seconds: int, git_commit: bool, git_push: bool) -> dict[str, Any]:
+def process_requests(
+    repo: Path,
+    execute: bool,
+    limit: int,
+    timeout_seconds: int,
+    git_commit: bool,
+    git_push: bool,
+    run_codex: bool,
+    codex_timeout_seconds: int,
+) -> dict[str, Any]:
     pending = repo / "sample-requests" / "pending"
     processed: list[dict[str, Any]] = []
     errors: list[dict[str, str]] = []
@@ -228,10 +317,11 @@ def process_requests(repo: Path, execute: bool, limit: int, timeout_seconds: int
             request = load_json(request_path)
             if request.get("status") not in {"pending", "failed"}:
                 continue
-            result = status_for_request(request, request_path, repo, execute, timeout_seconds)
+            result = status_for_request(request, request_path, repo, execute, timeout_seconds, run_codex, codex_timeout_seconds)
             if execute:
                 request["status"] = "completed" if result["status"] == "completed" else result["status"]
                 request["updated_at"] = now_iso()
+                extra_paths = [Path(extra) for extra in result.pop("_extra_changed_paths", [])]
                 write_json(request_path, request)
                 status_path = repo / "sample-results" / result["request_id"] / "status.json"
                 write_json(status_path, result)
@@ -239,6 +329,7 @@ def process_requests(repo: Path, execute: bool, limit: int, timeout_seconds: int
                 result_dir = repo / "sample-results" / result["request_id"]
                 if result_dir.exists():
                     changed_paths.extend(path for path in result_dir.rglob("*") if path.is_file())
+                changed_paths.extend(extra_paths)
             processed.append({
                 "request_path": str(request_path.relative_to(repo)),
                 "request_id": result["request_id"],
@@ -263,6 +354,8 @@ def main() -> int:
     parser.add_argument("--git-push", action="store_true", help="Push committed sample result changes to origin/main.")
     parser.add_argument("--limit", type=int, default=3)
     parser.add_argument("--timeout-seconds", type=int, default=60)
+    parser.add_argument("--run-codex", action="store_true", help="Run server Codex deep teardown when explicitly requested.")
+    parser.add_argument("--codex-timeout-seconds", type=int, default=1800)
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 
@@ -270,7 +363,16 @@ def main() -> int:
     if not (repo / ".git").exists():
         print(f"not a Git repository: {repo}", file=sys.stderr)
         return 2
-    result = process_requests(repo, args.execute, max(1, args.limit), max(5, args.timeout_seconds), args.git_commit, args.git_push)
+    result = process_requests(
+        repo,
+        args.execute,
+        max(1, args.limit),
+        max(5, args.timeout_seconds),
+        args.git_commit,
+        args.git_push,
+        args.run_codex,
+        max(60, args.codex_timeout_seconds),
+    )
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
