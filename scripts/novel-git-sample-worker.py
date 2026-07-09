@@ -298,6 +298,41 @@ def status_for_request(
     return result
 
 
+def running_status_for_request(request: dict[str, Any], request_path: Path, repo: Path) -> dict[str, Any]:
+    request_id = str(request.get("request_id") or request_path.stem)
+    result_dir = repo / "sample-results" / request_id
+    books = request.get("books") if isinstance(request.get("books"), list) else []
+    status_books = []
+    for book in books:
+        if not isinstance(book, dict):
+            continue
+        basis, automation_allowed = legal_basis_for(request, book)
+        status_books.append({
+            "title": str(book.get("title") or ""),
+            "author": str(book.get("author") or ""),
+            "legal_access_status": basis,
+            "automation_allowed": automation_allowed,
+            "identity_confidence": book.get("identity_confidence", "unknown"),
+            "acquisition_status": "queued_for_packet",
+            "quality_status": "unchecked",
+        })
+    return {
+        "schema_version": "1.0",
+        "request_id": request_id,
+        "status": "running",
+        "updated_at": now_iso(),
+        "effective_sample_count": 0,
+        "packet_dir": str((result_dir / "packets").relative_to(repo)),
+        "progress": {
+            "stage": "server_sample_worker_started",
+            "message": "Server worker has claimed this request and is attempting legal packet acquisition.",
+            "book_count": len(status_books),
+        },
+        "books": status_books,
+        "dry_run": False,
+    }
+
+
 def process_requests(
     repo: Path,
     execute: bool,
@@ -315,8 +350,24 @@ def process_requests(
     for request_path in sorted(pending.glob("*.json"))[:limit]:
         try:
             request = load_json(request_path)
-            if request.get("status") not in {"pending", "failed"}:
+            if request.get("status") != "pending" and not (
+                request.get("status") == "failed" and request.get("retry_requested") is True
+            ):
                 continue
+            if execute:
+                request["status"] = "running"
+                request["updated_at"] = now_iso()
+                running = running_status_for_request(request, request_path, repo)
+                status_path = repo / "sample-results" / running["request_id"] / "status.json"
+                write_json(request_path, request)
+                write_json(status_path, running)
+                if git_commit:
+                    safe_git_record(
+                        repo,
+                        [request_path, status_path],
+                        f"samples: mark request running {running['request_id']}",
+                        git_push,
+                    )
             result = status_for_request(request, request_path, repo, execute, timeout_seconds, run_codex, codex_timeout_seconds)
             if execute:
                 request["status"] = "completed" if result["status"] == "completed" else result["status"]
