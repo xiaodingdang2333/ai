@@ -65,6 +65,16 @@ def fetch_if_requested(repo: Path, fetch: bool) -> dict[str, str]:
         run_git(repo, ["fetch", "origin", "--prune"])
         info["origin_main"] = run_git(repo, ["rev-parse", "origin/main"])
         info["after_fetch_head"] = run_git(repo, ["rev-parse", "HEAD"])
+        status = run_git(repo, ["status", "--porcelain"])
+        behind = int(run_git(repo, ["rev-list", "--count", "HEAD..origin/main"]) or "0")
+        ahead = int(run_git(repo, ["rev-list", "--count", "origin/main..HEAD"]) or "0")
+        info["behind_origin_main"] = str(behind)
+        info["ahead_origin_main"] = str(ahead)
+        if behind and not ahead and not status:
+            run_git(repo, ["merge", "--ff-only", "origin/main"])
+            info["fast_forwarded_to"] = run_git(repo, ["rev-parse", "HEAD"])
+        elif behind:
+            info["fast_forward_skipped"] = "local changes or local commits present"
     return info
 
 
