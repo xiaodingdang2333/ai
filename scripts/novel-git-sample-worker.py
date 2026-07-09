@@ -98,6 +98,14 @@ def safe_slug(value: str, fallback: str) -> str:
     return (cleaned[:80] or fallback)
 
 
+def positive_int(value: Any, default: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
+
+
 def legal_basis_for(request: dict[str, Any], book: dict[str, Any]) -> tuple[str, bool]:
     basis = book.get("legal_access_basis") or request.get("legal_access_basis") or "unknown"
     allowed = bool(book.get("automation_allowed", request.get("automation_allowed", False)))
@@ -173,6 +181,72 @@ def run_codex_teardown(repo: Path, request: dict[str, Any], result_dir: Path, pa
     return False, ((result.stderr or "") + "\n" + (result.stdout or "")).strip()[-2000:], None
 
 
+def result_status(effective: int, target: int, books: list[dict[str, Any]]) -> str:
+    if effective >= target:
+        return "completed"
+    if effective:
+        return "partially_completed"
+    if books and all(item.get("acquisition_status") == "manual_required" for item in books):
+        return "manual_material_required"
+    return "failed"
+
+
+def progress_payload(
+    request: dict[str, Any],
+    request_path: Path,
+    repo: Path,
+    stage: str,
+    message: str,
+    status_books: list[dict[str, Any]],
+    current_index: int | None = None,
+    current_book: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    request_id = str(request.get("request_id") or request_path.stem)
+    result_dir = repo / "sample-results" / request_id
+    books = request.get("books") if isinstance(request.get("books"), list) else []
+    min_effective = positive_int(request.get("min_effective_samples"), 1)
+    max_attempts = positive_int(request.get("max_attempts"), max(min_effective * 5, len(books) or 1))
+    total_candidates = min(max_attempts, len(books))
+    effective = sum(1 for item in status_books if item.get("quality_status") == "effective")
+    return {
+        "schema_version": "1.0",
+        "request_id": request_id,
+        "status": "running",
+        "updated_at": now_iso(),
+        "effective_sample_count": effective,
+        "packet_dir": str((result_dir / "packets").relative_to(repo)),
+        "progress": {
+            "stage": stage,
+            "message": message,
+            "current_index": current_index,
+            "total_candidates": total_candidates,
+            "effective_sample_count": effective,
+            "target_effective_sample_count": min_effective,
+            "max_attempts": max_attempts,
+            "current_book": current_book,
+        },
+        "books": status_books,
+        "dry_run": False,
+    }
+
+
+def publish_progress(
+    repo: Path,
+    request_path: Path,
+    request: dict[str, Any],
+    payload: dict[str, Any],
+    git_commit: bool,
+    git_push: bool,
+    message: str,
+) -> dict[str, Any] | None:
+    status_path = repo / "sample-results" / payload["request_id"] / "status.json"
+    write_json(request_path, request)
+    write_json(status_path, payload)
+    if not git_commit:
+        return None
+    return safe_git_record(repo, [request_path, status_path], message, git_push)
+
+
 def status_for_request(
     request: dict[str, Any],
     request_path: Path,
@@ -181,11 +255,16 @@ def status_for_request(
     timeout_seconds: int,
     run_codex: bool,
     codex_timeout_seconds: int,
+    git_commit: bool = False,
+    git_push: bool = False,
 ) -> dict[str, Any]:
     request_id = str(request.get("request_id") or request_path.stem)
     result_dir = repo / "sample-results" / request_id
     packet_dir = result_dir / "packets"
-    books = request.get("books") if isinstance(request.get("books"), list) else []
+    all_books = request.get("books") if isinstance(request.get("books"), list) else []
+    min_effective = positive_int(request.get("min_effective_samples"), 1)
+    max_attempts = positive_int(request.get("max_attempts"), max(min_effective * 5, len(all_books) or 1))
+    books = all_books[:max_attempts]
     status_books: list[dict[str, Any]] = []
     packet_paths: list[Path] = []
     effective = 0
@@ -202,6 +281,30 @@ def status_for_request(
             "legal_access_status": basis,
             "identity_confidence": book.get("identity_confidence", "unknown"),
         }
+        if execute:
+            pending_record = {
+                **base_record,
+                "acquisition_status": "running",
+                "quality_status": "checking",
+            }
+            publish_progress(
+                repo,
+                request_path,
+                request,
+                progress_payload(
+                    request,
+                    request_path,
+                    repo,
+                    "acquiring_sample",
+                    f"Attempting candidate {index}/{len(books)}.",
+                    [*status_books, pending_record],
+                    index,
+                    {"title": title, "author": author, "channel": book.get("channel")},
+                ),
+                git_commit,
+                git_push,
+                f"samples: progress {request_id} {index}/{len(books)}",
+            )
         if basis not in ALLOWED_BASES or not automation_allowed:
             status_books.append({
                 **base_record,
@@ -240,10 +343,44 @@ def status_for_request(
                 "quality_status": "failed",
                 "failure_reason": output[:1000],
             })
+        if execute:
+            publish_progress(
+                repo,
+                request_path,
+                request,
+                progress_payload(
+                    request,
+                    request_path,
+                    repo,
+                    "candidate_finished",
+                    f"Finished candidate {index}/{len(books)}.",
+                    status_books,
+                    index,
+                    {"title": title, "author": author, "channel": book.get("channel")},
+                ),
+                git_commit,
+                git_push,
+                f"samples: progress {request_id} effective {effective}",
+            )
+        if effective >= min_effective:
+            break
 
-    status = "completed" if effective else "manual_material_required"
-    if any(item["acquisition_status"] == "failed" for item in status_books):
-        status = "partially_completed" if effective else "failed"
+    skipped = []
+    if len(all_books) > len(status_books):
+        skipped = [
+            {
+                "title": str(book.get("title") or ""),
+                "author": str(book.get("author") or ""),
+                "channel": book.get("channel"),
+                "acquisition_status": "not_attempted",
+                "quality_status": "not_attempted",
+                "skip_reason": "target_effective_sample_count reached" if effective >= min_effective else "max_attempts reached",
+            }
+            for book in all_books[len(status_books):]
+            if isinstance(book, dict)
+        ]
+
+    status = result_status(effective, min_effective, status_books)
 
     result = {
         "schema_version": "1.0",
@@ -251,8 +388,12 @@ def status_for_request(
         "status": status if execute else "running",
         "updated_at": now_iso(),
         "effective_sample_count": effective,
+        "target_effective_sample_count": min_effective,
+        "attempted_count": len(status_books),
+        "total_candidate_count": len(all_books),
+        "max_attempts": max_attempts,
         "packet_dir": str(packet_dir.relative_to(repo)),
-        "books": status_books,
+        "books": status_books + skipped,
         "dry_run": not execute,
     }
 
@@ -300,10 +441,11 @@ def status_for_request(
 
 def running_status_for_request(request: dict[str, Any], request_path: Path, repo: Path) -> dict[str, Any]:
     request_id = str(request.get("request_id") or request_path.stem)
-    result_dir = repo / "sample-results" / request_id
     books = request.get("books") if isinstance(request.get("books"), list) else []
+    min_effective = positive_int(request.get("min_effective_samples"), 1)
+    max_attempts = positive_int(request.get("max_attempts"), max(min_effective * 5, len(books) or 1))
     status_books = []
-    for book in books:
+    for book in books[:max_attempts]:
         if not isinstance(book, dict):
             continue
         basis, automation_allowed = legal_basis_for(request, book)
@@ -316,21 +458,16 @@ def running_status_for_request(request: dict[str, Any], request_path: Path, repo
             "acquisition_status": "queued_for_packet",
             "quality_status": "unchecked",
         })
-    return {
-        "schema_version": "1.0",
-        "request_id": request_id,
-        "status": "running",
-        "updated_at": now_iso(),
-        "effective_sample_count": 0,
-        "packet_dir": str((result_dir / "packets").relative_to(repo)),
-        "progress": {
-            "stage": "server_sample_worker_started",
-            "message": "Server worker has claimed this request and is attempting legal packet acquisition.",
-            "book_count": len(status_books),
-        },
-        "books": status_books,
-        "dry_run": False,
-    }
+    payload = progress_payload(
+        request,
+        request_path,
+        repo,
+        "server_sample_worker_started",
+        "Server worker has claimed this request and is attempting legal packet acquisition.",
+        status_books,
+    )
+    payload["request_id"] = request_id
+    return payload
 
 
 def process_requests(
@@ -368,7 +505,17 @@ def process_requests(
                         f"samples: mark request running {running['request_id']}",
                         git_push,
                     )
-            result = status_for_request(request, request_path, repo, execute, timeout_seconds, run_codex, codex_timeout_seconds)
+            result = status_for_request(
+                request,
+                request_path,
+                repo,
+                execute,
+                timeout_seconds,
+                run_codex,
+                codex_timeout_seconds,
+                git_commit,
+                git_push,
+            )
             if execute:
                 request["status"] = "completed" if result["status"] == "completed" else result["status"]
                 request["updated_at"] = now_iso()

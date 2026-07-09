@@ -20,6 +20,8 @@ This directory is primarily a Chinese web-novel writing workspace, not a convent
 - The old custom GPT Action workflow under `services/novel-actions` is deprecated for novel writing, QA, revision, upload, and long-task orchestration.
 - The authoritative web workflow is `/home/admin/chatgpt-novel-production-system` latest `main`, currently routed by `CURRENT.json` to the 2.2-LTS Git workflow.
 - Web ChatGPT should write through Git project files by default. Server workers only consume explicit Git queues: `sample-requests/pending/*.json`, `server-write-requests/pending/*.json`, and upload-ready `novels/*/00_PROJECT.json`.
+- Sample requests must use a 5x fallback pool: if N effective samples are needed, submit at least N*5 candidates with `min_effective_samples=N` and `max_attempts=N*5`; server stops once N packets are effective. Failed/insufficient sample requests should trigger same-genre fallback requests for up to 3 rounds.
+- Server task progress should be viewed on the 8090 `/novel-jobs` page by default. ChatGPT should not do high-frequency polling unless the user asks for a status check.
 - Server-side Codex writing is allowed only when a request declares `allow_server_codex=true`, `target_mode=continue_formal`, and `quality_profile=v2.2-LTS-strong`; it consumes server Codex quota.
 - Fanqie draft upload must independently re-run server-side quality gates before upload. Do not upload based only on a chat claim that QA passed.
 
