@@ -135,6 +135,55 @@ def run_packet(book: dict[str, Any], timeout_seconds: int) -> tuple[bool, str]:
     return False, error or output or f"packet command failed with exit {result.returncode}"
 
 
+NON_STORY_CHAPTER_TITLE = re.compile(
+    r"感谢信|创作思路|创作总结|明天会更新|明天中午更新|理一下思绪|请假|完结感言|读者群|上架感言"
+)
+
+
+def audit_local_study_packet(raw_output: str) -> dict[str, Any]:
+    """Reject mirror packets that are mostly notices, duplicates, or tiny fragments."""
+    raw_path = Path(raw_output.strip())
+    if not raw_path.is_dir():
+        return {"passed": True, "kind": "adapter_text_response", "reasons": []}
+
+    source_path = raw_path / "source.json"
+    if not source_path.exists():
+        return {"passed": False, "kind": "local_study_packet", "reasons": ["missing source.json"]}
+    source = load_json(source_path)
+    chapters = source.get("chapters") if isinstance(source.get("chapters"), list) else []
+    usable = [item for item in chapters if isinstance(item, dict)]
+    sizes = [int(item["characters"]) for item in usable if isinstance(item.get("characters"), int)]
+    notice_titles = [str(item.get("title") or "") for item in usable if NON_STORY_CHAPTER_TITLE.search(str(item.get("title") or ""))]
+    tiny_count = sum(1 for size in sizes if size < 500)
+    chapter_numbers = []
+    for item in usable:
+        match = re.search(r"第\s*(\d+)\s*章", str(item.get("title") or ""))
+        if match:
+            chapter_numbers.append(match.group(1))
+    duplicate_numbers = len(chapter_numbers) - len(set(chapter_numbers))
+    reasons: list[str] = []
+    if len(usable) < 6:
+        reasons.append(f"too few selected chapters: {len(usable)}")
+    if sum(sizes) < 10000:
+        reasons.append(f"selected characters too low: {sum(sizes)}")
+    if len(notice_titles) >= 2:
+        reasons.append(f"non-story notices in selected chapters: {len(notice_titles)}")
+    if tiny_count >= 2:
+        reasons.append(f"tiny selected fragments: {tiny_count}")
+    if duplicate_numbers >= 2:
+        reasons.append(f"duplicate chapter numbers in selection: {duplicate_numbers}")
+    return {
+        "passed": not reasons,
+        "kind": "local_study_packet",
+        "selected_chapter_count": len(usable),
+        "selected_characters": sum(sizes),
+        "non_story_notice_count": len(notice_titles),
+        "tiny_fragment_count": tiny_count,
+        "duplicate_chapter_number_count": duplicate_numbers,
+        "reasons": reasons,
+    }
+
+
 def export_web_packet(raw_output: str, packet_path: Path, book: dict[str, Any]) -> dict[str, Any]:
     """Export a Git-readable, non-full-text packet from a local study directory.
 
@@ -148,6 +197,7 @@ def export_web_packet(raw_output: str, packet_path: Path, book: dict[str, Any]) 
     title = str(book.get("title") or "")
     author = str(book.get("author") or "")
 
+    source_quality = audit_local_study_packet(raw_output)
     if raw_path.is_dir():
         source_path = raw_path / "source.json"
         source = load_json(source_path) if source_path.exists() else {}
@@ -178,6 +228,7 @@ def export_web_packet(raw_output: str, packet_path: Path, book: dict[str, Any]) 
                 "identity_verification_required": True,
                 "full_text_storage": "server_local_only",
             },
+            "source_quality_audit": source_quality,
             "selection": {
                 "selected_chapter_count": source.get("selected_chapter_count", len(chapter_rows)),
                 "selected_characters": source.get("selected_characters", sum(chapter_sizes)),
@@ -207,6 +258,7 @@ def export_web_packet(raw_output: str, packet_path: Path, book: dict[str, Any]) 
             "author": author,
             "adapter_response": compact[:12000],
             "web_analysis_ready": bool(compact),
+            "source_quality_audit": source_quality,
         }
 
     write_json(packet_path, packet)
@@ -404,19 +456,30 @@ def status_for_request(
 
         ok, output = run_packet(book, timeout_seconds)
         if ok:
-            packet_dir.mkdir(parents=True, exist_ok=True)
-            packet_path = packet_dir / f"{index:03d}_{safe_slug(title, 'book')}.json"
-            packet = export_web_packet(output, packet_path, book)
-            packet_paths.append(packet_path)
-            effective += 1
-            status_books.append({
-                **base_record,
-                "acquisition_status": "packet_ready",
-                "quality_status": "effective",
-                "packet_path": str(packet_path.relative_to(repo)),
-                "packet_kind": packet.get("packet_kind"),
-                "web_analysis_ready": packet.get("web_analysis_ready"),
-            })
+            source_quality = audit_local_study_packet(output)
+            if not source_quality["passed"]:
+                status_books.append({
+                    **base_record,
+                    "acquisition_status": "failed",
+                    "quality_status": "quality_rejected",
+                    "failure_reason": "SOURCE_QUALITY_AUDIT: " + "; ".join(source_quality["reasons"]),
+                    "source_quality_audit": source_quality,
+                })
+            else:
+                packet_dir.mkdir(parents=True, exist_ok=True)
+                packet_path = packet_dir / f"{index:03d}_{safe_slug(title, 'book')}.json"
+                packet = export_web_packet(output, packet_path, book)
+                packet_paths.append(packet_path)
+                effective += 1
+                status_books.append({
+                    **base_record,
+                    "acquisition_status": "packet_ready",
+                    "quality_status": "effective",
+                    "packet_path": str(packet_path.relative_to(repo)),
+                    "packet_kind": packet.get("packet_kind"),
+                    "web_analysis_ready": packet.get("web_analysis_ready"),
+                    "source_quality_audit": source_quality,
+                })
         else:
             status_books.append({
                 **base_record,
