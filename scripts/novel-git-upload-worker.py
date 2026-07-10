@@ -40,6 +40,12 @@ ACCOUNT_AUTHORS = {
     "account-c": "泡芙软呼呼",
 }
 
+ACCOUNT_AI_DECLARATIONS = {
+    "account-a": "no",
+    "account-b": "yes",
+    "account-c": "no",
+}
+
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
@@ -157,6 +163,8 @@ def validate_candidate(project_path: Path, data: dict[str, Any]) -> list[str]:
         errors.append("fanqie_book_id is required")
     if data.get("ai_use") not in {"yes", "no"}:
         errors.append("ai_use must be yes or no")
+    elif account in ACCOUNT_AI_DECLARATIONS and data.get("ai_use") != ACCOUNT_AI_DECLARATIONS[account]:
+        errors.append(f"ai_use must be {ACCOUNT_AI_DECLARATIONS[account]!r} for {account}")
     evidence = data.get("ready_evidence")
     if not isinstance(evidence, dict):
         errors.append("ready_evidence is required")
