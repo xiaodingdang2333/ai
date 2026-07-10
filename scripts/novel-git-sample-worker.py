@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 import time
@@ -132,6 +133,84 @@ def run_packet(book: dict[str, Any], timeout_seconds: int) -> tuple[bool, str]:
     if result.returncode == 0:
         return True, output
     return False, error or output or f"packet command failed with exit {result.returncode}"
+
+
+def export_web_packet(raw_output: str, packet_path: Path, book: dict[str, Any]) -> dict[str, Any]:
+    """Export a Git-readable, non-full-text packet from a local study directory.
+
+    ``sonovel-client packet`` currently prints the local output directory.  The
+    former worker wrote that directory name into Git, which made a successful
+    acquisition unusable to web ChatGPT.  Keep the full source locally and
+    publish only machine-readable metadata, chapter structure and aggregate
+    statistics to the shared repository.
+    """
+    raw_path = Path(raw_output.strip())
+    title = str(book.get("title") or "")
+    author = str(book.get("author") or "")
+
+    if raw_path.is_dir():
+        source_path = raw_path / "source.json"
+        source = load_json(source_path) if source_path.exists() else {}
+        chapters = source.get("chapters") if isinstance(source.get("chapters"), list) else []
+        chapter_rows = [
+            {
+                "index": item.get("index"),
+                "title": item.get("title"),
+                "characters": item.get("characters"),
+            }
+            for item in chapters
+            if isinstance(item, dict)
+        ]
+        chapter_sizes = [
+            int(item["characters"])
+            for item in chapter_rows
+            if isinstance(item.get("characters"), int)
+        ]
+        packet = {
+            "schema_version": "1.0",
+            "packet_kind": "web_readable_structural_metadata",
+            "title": source.get("title") or title,
+            "author": source.get("official_author") or author,
+            "source": {
+                "source_type": "server_local_study_packet",
+                "mirror_book_url": source.get("mirror_book_url"),
+                "mirror_chapter_count": source.get("mirror_chapter_count"),
+                "identity_verification_required": True,
+                "full_text_storage": "server_local_only",
+            },
+            "selection": {
+                "selected_chapter_count": source.get("selected_chapter_count", len(chapter_rows)),
+                "selected_characters": source.get("selected_characters", sum(chapter_sizes)),
+                "chapter_size": {
+                    "minimum": min(chapter_sizes) if chapter_sizes else None,
+                    "maximum": max(chapter_sizes) if chapter_sizes else None,
+                    "average": round(sum(chapter_sizes) / len(chapter_sizes), 2) if chapter_sizes else None,
+                },
+                "front_chapter_titles": source.get("mirror_first_chapter_titles", [])[:10],
+                "selected_chapters": chapter_rows,
+            },
+            "web_analysis_ready": False,
+            "next_step": (
+                "Use existing KB for ideation. Request server_codex packet_deep_teardown "
+                "when this sample must contribute semantic market analysis."
+            ),
+        }
+    else:
+        # Preserve non-path adapters as a bounded textual packet.  The current
+        # adapter emits a directory, but this keeps the contract usable for
+        # future official/open-license sources that return structured text.
+        compact = re.sub(r"\s+", " ", raw_output).strip()
+        packet = {
+            "schema_version": "1.0",
+            "packet_kind": "adapter_text_response",
+            "title": title,
+            "author": author,
+            "adapter_response": compact[:12000],
+            "web_analysis_ready": bool(compact),
+        }
+
+    write_json(packet_path, packet)
+    return packet
 
 
 def run_codex_teardown(repo: Path, request: dict[str, Any], result_dir: Path, packet_paths: list[Path], timeout_seconds: int) -> tuple[bool, str, Path | None]:
@@ -326,8 +405,8 @@ def status_for_request(
         ok, output = run_packet(book, timeout_seconds)
         if ok:
             packet_dir.mkdir(parents=True, exist_ok=True)
-            packet_path = packet_dir / f"{index:03d}_{safe_slug(title, 'book')}.txt"
-            packet_path.write_text(output + "\n", encoding="utf-8")
+            packet_path = packet_dir / f"{index:03d}_{safe_slug(title, 'book')}.json"
+            packet = export_web_packet(output, packet_path, book)
             packet_paths.append(packet_path)
             effective += 1
             status_books.append({
@@ -335,6 +414,8 @@ def status_for_request(
                 "acquisition_status": "packet_ready",
                 "quality_status": "effective",
                 "packet_path": str(packet_path.relative_to(repo)),
+                "packet_kind": packet.get("packet_kind"),
+                "web_analysis_ready": packet.get("web_analysis_ready"),
             })
         else:
             status_books.append({
