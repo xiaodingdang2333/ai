@@ -27,6 +27,7 @@ DEFAULT_REPO = Path("/home/admin/chatgpt-novel-production-system")
 EXPORT_ROOT = Path("/home/admin/ai/output/novel-git-upload")
 QUALITY_GATE_ROOT = EXPORT_ROOT / "quality-gates"
 FANQIE_UPLOAD = Path("/home/admin/ai/codex/skills/fanqie-upload/scripts/fanqie-upload.js")
+FANQIE_BROWSER_LEASE = Path("/home/admin/ai/scripts/fanqie-browser-lease.sh")
 
 ACCOUNT_PORTS = {
     "account-a": 9223,
@@ -77,6 +78,10 @@ def git_blob_sha(path: Path, repo: Path) -> str:
         return result.stdout.strip()
     data = path.read_bytes()
     return hashlib.sha1(f"blob {len(data)}\0".encode() + data).hexdigest()
+
+
+def file_sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def run_git(repo: Path, args: list[str], check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -133,6 +138,11 @@ def chapter_no_from_name(path: Path) -> int | None:
     if not match:
         match = re.search(r"第\s*0*(\d+)\s*章", path.name)
     return int(match.group(1)) if match else None
+
+
+def chapter_number(value: Any) -> int:
+    match = re.search(r"(\d+)", str(value or ""))
+    return int(match.group(1)) if match else 0
 
 
 def title_from_web_chapter(path: Path, text: str, no: int) -> str:
@@ -237,6 +247,137 @@ def run_command(command: list[str], execute: bool) -> dict[str, Any]:
 def formal_chapter_file(project_path: Path, no: int) -> Path | None:
     matches = sorted((project_path / "formal").glob(f"CH{no:03d}_*.md"))
     return matches[0] if len(matches) == 1 else None
+
+
+def recoverable_formal_evidence(project_path: Path, no: int, formal_path: Path) -> tuple[bool, dict[str, Any]]:
+    """Accept only a web formal chapter whose committed evidence matches its bytes.
+
+    This is the interruption-recovery path.  It deliberately does not infer
+    quality from the existence of a Markdown file: the web transaction must
+    already have produced matching content-gate, strong-QA and chapter-ledger
+    evidence before a server can restore the missing project-state commit.
+    """
+    chapter = f"CH{no:03d}"
+    content_paths = sorted((project_path / "证据").glob(f"{chapter}_CONTENT_GATE_*.json"))
+    digest = file_sha256(formal_path)
+    content = None
+    for path in reversed(content_paths):
+        try:
+            payload = load_json(path)
+        except Exception:
+            continue
+        source = str(payload.get("source_path") or "")
+        if (
+            payload.get("result") == "PASS"
+            and payload.get("min_hanzi_pass") is True
+            and payload.get("utf8_sha256") == digest
+            and source.endswith(formal_path.name)
+        ):
+            content = {"path": path, "payload": payload}
+            break
+    if content is None:
+        return False, {"reason": "matching_content_gate_missing", "formal_sha256": digest}
+
+    qa_path = project_path / "09_QA问题与修复记录.md"
+    ledger_path = project_path / "08_章节事实账本.md"
+    qa_text = qa_path.read_text(encoding="utf-8") if qa_path.exists() else ""
+    ledger_text = ledger_path.read_text(encoding="utf-8") if ledger_path.exists() else ""
+    qa_markers = [f"## {chapter}-", "### Chapter Strong QA", "结论：PASS", f"CHECKPOINT_{chapter}"]
+    if not all(marker in qa_text for marker in qa_markers):
+        return False, {"reason": "strong_qa_evidence_missing", "formal_sha256": digest}
+    if f"## CHLEDGER-{chapter}" not in ledger_text or "qa_result：PASS" not in ledger_text:
+        return False, {"reason": "chapter_ledger_missing_or_not_passed", "formal_sha256": digest}
+    return True, {
+        "formal_sha256": digest,
+        "content_gate_path": content["path"],
+        "qa_path": qa_path,
+        "ledger_path": ledger_path,
+        "hanzi_count": content["payload"].get("chinese_hanzi_count"),
+    }
+
+
+def recover_interrupted_web_transactions(repo: Path, execute: bool) -> list[dict[str, Any]]:
+    """Restore a state commit after a web conversation ended between commits.
+
+    The recovery is intentionally narrow: it only advances one consecutive
+    formal chapter, uses byte-matching evidence, and never publishes.  In
+    review-mode projects a human-review requirement remains authoritative.
+    """
+    updates: list[dict[str, Any]] = []
+    for project_file in sorted((repo / "novels").glob("*/00_PROJECT.json")):
+        try:
+            data = load_json(project_file)
+        except Exception:
+            continue
+        project_path = project_file.parent
+        previous = chapter_number(data.get("formal_until"))
+        no = previous + 1
+        formal_path = formal_chapter_file(project_path, no)
+        if formal_path is None:
+            continue
+        valid, evidence = recoverable_formal_evidence(project_path, no, formal_path)
+        if not valid:
+            continue
+        chapter = f"CH{no:03d}"
+        recovery_path = project_path / "证据" / f"{chapter}_SERVER_TRANSACTION_RECOVERY.json"
+        payload = {
+            "recovery_id": f"SERVER_TRANSACTION_RECOVERY_{chapter}",
+            "reason": "web_formal_and_evidence_committed_before_project_state",
+            "recovered_at": now_iso(),
+            "chapter": chapter,
+            "formal_path": str(formal_path.relative_to(repo)),
+            "formal_sha256": evidence["formal_sha256"],
+            "content_gate_path": str(evidence["content_gate_path"].relative_to(repo)),
+            "qa_path": str(evidence["qa_path"].relative_to(repo)),
+            "ledger_path": str(evidence["ledger_path"].relative_to(repo)),
+            "hanzi_count": evidence.get("hanzi_count"),
+            "result": "PASS",
+        }
+        changed_paths = [recovery_path, project_file]
+        if execute:
+            write_json(recovery_path, payload)
+            data["formal_until"] = no
+            data["formal_text_created"] = True
+            data["project_status"] = f"{chapter}_FORMAL_QA_RECOVERED"
+            data["next_action"] = f"SERVER_UPLOAD_{chapter}_DRAFTS"
+            ready = data.setdefault("ready_evidence", {})
+            ready["qa_passed"] = True
+            ready["current_blob_validated"] = True
+            review_required = ready.get("human_review_required") is True
+            if review_required and ready.get("human_review_status") != "approved":
+                data["auto_upload_to_drafts"] = False
+                data["upload_status"] = "awaiting_human_review"
+            else:
+                data["auto_upload_to_drafts"] = True
+                data["upload_status"] = "ready_for_draft_upload"
+                data["upload_range"] = {"from_chapter": no, "to_chapter": no}
+            data["last_transaction_recovery"] = payload
+            data["updated_at"] = now_iso()
+            write_json(project_file, data)
+            current_path = repo / "CURRENT.json"
+            if current_path.exists():
+                current = load_json(current_path)
+                record = current.get("novels", {}).get(data.get("book_id"))
+                if isinstance(record, dict):
+                    record["status"] = data["project_status"]
+                    record["formal_until"] = no
+                    record["next_action"] = data["next_action"]
+                task = current.get("current_task")
+                if isinstance(task, dict) and task.get("project_path") == str(project_path.relative_to(repo)):
+                    task["phase"] = data["project_status"]
+                    task["formal_until"] = no
+                    task["next_action"] = data["next_action"]
+                current["updated_at"] = now_iso()
+                write_json(current_path, current)
+                changed_paths.append(current_path)
+        updates.append({
+            "project_file": str(project_file.relative_to(repo)),
+            "chapter": chapter,
+            "status": "recovered" if execute else "recoverable",
+            "paths": [str(path.relative_to(repo)) for path in changed_paths if path.exists()],
+            "evidence": payload,
+        })
+    return updates
 
 
 def quality_output_dir(repo: Path, project_path: Path, execute: bool) -> Path:
@@ -425,7 +566,7 @@ def process_candidate(repo: Path, project_file: Path, execute: bool) -> dict[str
     if execute and scan["status"] != "ok":
         return {"project_file": str(project_file.relative_to(repo)), "status": "scan_failed", "export_dir": str(export_dir), "scan": scan}
 
-    drafts = run_command([
+    drafts_command = [
         *base,
         "drafts",
         "--book",
@@ -440,7 +581,13 @@ def process_candidate(repo: Path, project_file: Path, execute: bool) -> dict[str
         str(from_chapter),
         "--to",
         str(to_chapter),
-    ], execute)
+    ]
+    # The host has room for only one full browser.  The lease serializes
+    # Fanqie uploads with the web ChatGPT browser and restores the latter when
+    # the account operation is complete.
+    if execute:
+        drafts_command = [str(FANQIE_BROWSER_LEASE), "run", account, str(port), *drafts_command]
+    drafts = run_command(drafts_command, execute)
     if execute and drafts["status"] != "ok":
         return {
             "project_file": str(project_file.relative_to(repo)),
@@ -450,7 +597,7 @@ def process_candidate(repo: Path, project_file: Path, execute: bool) -> dict[str
             "drafts": drafts,
         }
 
-    verify = run_command([
+    verify_command = [
         *base,
         "verify",
         "--book",
@@ -465,7 +612,10 @@ def process_candidate(repo: Path, project_file: Path, execute: bool) -> dict[str
         str(from_chapter),
         "--to",
         str(to_chapter),
-    ], execute)
+    ]
+    if execute:
+        verify_command = [str(FANQIE_BROWSER_LEASE), "run", account, str(port), *verify_command]
+    verify = run_command(verify_command, execute)
 
     status = "dry_run" if not execute else ("uploaded_to_drafts" if verify["status"] == "ok" else "verify_failed")
     if execute and status == "uploaded_to_drafts":
@@ -504,6 +654,7 @@ def main() -> int:
     if not (repo / ".git").exists():
         print(f"not a Git repository: {repo}", file=sys.stderr)
         return 2
+    recovery_updates = recover_interrupted_web_transactions(repo, args.execute)
     candidates = []
     for project_file in sorted((repo / "novels").glob("*/00_PROJECT.json")):
         try:
@@ -523,11 +674,19 @@ def main() -> int:
             for item in results
             if item["status"] == "uploaded_to_drafts"
         ]
+        for recovery in recovery_updates:
+            updated.extend(repo / path for path in recovery.get("paths", []))
         for item in results:
             for report in item.get("quality_report_paths", []):
                 updated.append(repo / report)
         git_result = safe_git_record(repo, updated, f"upload: mark Fanqie drafts uploaded {now_iso()}", args.git_push)
-    output = {"execute": args.execute, "processed": results, "failed_count": len(failed), "git": git_result}
+    output = {
+        "execute": args.execute,
+        "recovery": recovery_updates,
+        "processed": results,
+        "failed_count": len(failed),
+        "git": git_result,
+    }
     if args.json:
         print(json.dumps(output, ensure_ascii=False, indent=2))
     else:

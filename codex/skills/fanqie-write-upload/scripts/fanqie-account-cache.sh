@@ -6,6 +6,8 @@ SNAP_PROFILE="${SNAP_PROFILE:-/root/snap/chromium/common/chromium}"
 BACKUP_DIR="${BACKUP_DIR:-$WORK_ROOT/.fanqie-profiles/snap-backups}"
 LIVE_DIR="${LIVE_DIR:-/root/snap/chromium/common/fanqie-profiles/live}"
 CHROMIUM="${CHROMIUM:-/snap/bin/chromium}"
+LEASE_FILE="${FANQIE_BROWSER_LEASE_FILE:-/run/lock/fanqie-browser-account.lock}"
+LEASE_WAIT_SECONDS="${FANQIE_BROWSER_LEASE_WAIT_SECONDS:-300}"
 
 usage() {
   cat <<'EOF'
@@ -16,6 +18,7 @@ Usage:
   fanqie-account-cache.sh start account-a|account-b|account-c PORT
   fanqie-account-cache.sh switch-start account-a|account-b|account-c PORT
   fanqie-account-cache.sh identify PORT
+  fanqie-account-cache.sh with account-a|account-b|account-c PORT COMMAND [ARGS...]
 
 Account map:
   account-a = 西大水怪
@@ -41,11 +44,22 @@ account_dir() {
 }
 
 stop_chrome() {
-  local pids
-  pids="$(ps -ef | awk '/chromium|chromium-browser|chrome/ && !/awk/ {print $2}')"
+  local pids attempt
+  # This host can keep a separate web ChatGPT browser alive for Git-based
+  # writing.  Only stop Chromium instances launched with a Fanqie live
+  # profile; never kill every browser process on the machine.
+  pids="$(ps -eo pid=,args= | awk '/(chromium|chromium-browser|chrome)/ && /fanqie-profiles\/live\// {print $1}')"
   if [[ -n "$pids" ]]; then
     kill $pids 2>/dev/null || true
-    sleep 1
+    for attempt in $(seq 1 10); do
+      sleep 1
+      pids="$(ps -eo pid=,args= | awk '/(chromium|chromium-browser|chrome)/ && /fanqie-profiles\/live\// {print $1}')"
+      [[ -z "$pids" ]] && break
+    done
+    if [[ -n "$pids" ]]; then
+      kill -9 $pids 2>/dev/null || true
+      sleep 1
+    fi
   fi
 }
 
@@ -114,6 +128,83 @@ start_chrome() {
   echo "$!"
 }
 
+wait_for_cdp() {
+  local port="$1"
+  local attempt
+  for attempt in $(seq 1 30); do
+    if curl -fsS --max-time 2 "http://127.0.0.1:${port}/json/version" >/dev/null; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+wait_for_account_identity() {
+  local port="$1"
+  local expected="$2"
+  local attempt actual
+  # Chrome opens the CDP HTTP port before its first renderer is usable.  A
+  # successful identity read is the real readiness signal for writer actions.
+  for attempt in $(seq 1 8); do
+    actual="$(identify "$port" 2>/dev/null | tail -n 1 || true)"
+    if [[ "$actual" == "$expected" ]]; then
+      return 0
+    fi
+    sleep 3
+  done
+  echo "Fanqie account not ready: expected ${expected}, last value ${actual:-UNKNOWN}" >&2
+  return 1
+}
+
+expected_author() {
+  case "${1:-}" in
+    account-a) printf '%s\n' '西大水怪' ;;
+    account-b) printf '%s\n' '桃枝醒醒' ;;
+    account-c) printf '%s\n' '泡芙软呼呼' ;;
+    *) echo "Unknown account: ${1:-}" >&2; exit 2 ;;
+  esac
+}
+
+with_browser_lease() {
+  local account="$1"
+  local port="$2"
+  shift 2
+  [[ $# -gt 0 ]] || { echo "with requires a command" >&2; exit 2; }
+
+  mkdir -p "$(dirname "$LEASE_FILE")"
+  exec 9>"$LEASE_FILE"
+  if ! flock -w "$LEASE_WAIT_SECONDS" 9; then
+    echo "Timed out waiting for Fanqie browser lease after ${LEASE_WAIT_SECONDS}s" >&2
+    exit 75
+  fi
+
+  local started=0
+  cleanup_lease() {
+    local rc=$?
+    if [[ "$started" -eq 1 ]]; then
+      stop_chrome
+      save_cache "$account" || true
+    fi
+    exit "$rc"
+  }
+  trap cleanup_lease EXIT INT TERM
+
+  stop_chrome
+  restore_cache "$account"
+  start_chrome "$account" "$port" >/dev/null
+  started=1
+  if ! wait_for_cdp "$port"; then
+    echo "Fanqie browser did not expose CDP on port ${port}" >&2
+    exit 1
+  fi
+  local expected
+  expected="$(expected_author "$account")"
+  sleep 3
+  wait_for_account_identity "$port" "$expected"
+  "$@"
+}
+
 identify() {
   local port="$1"
   cd "$WORK_ROOT"
@@ -175,6 +266,10 @@ case "$cmd" in
   identify)
     [[ $# -eq 2 ]] || { usage; exit 2; }
     identify "$2"
+    ;;
+  with)
+    [[ $# -ge 4 ]] || { usage; exit 2; }
+    with_browser_lease "$2" "$3" "${@:4}"
     ;;
   *)
     usage

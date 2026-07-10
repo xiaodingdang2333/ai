@@ -343,6 +343,53 @@ async function verifySavedArticle(Runtime, bookId, row, chapter) {
   return stats;
 }
 
+async function repairUnexpectedBlankDraft(Runtime, bookId, row, chapter) {
+  const before = await fetchDraftArticle(Runtime, bookId, row.item_id);
+  if (before.title || compactText(before.text) || before.nonEmptyParagraphs) {
+    throw new Error(`Unexpected new draft is not blank and cannot be repaired safely: item=${row.item_id}`);
+  }
+  const expectedTitle = fullChapterTitle(chapter);
+  const payload = await evalv(Runtime, `(async () => {
+    const editUrl = '/api/author/edit_article/v0/?book_id=${bookId}&item_id=${row.item_id}&from_source=0';
+    const editRes = await fetch(editUrl, { credentials: 'include' });
+    const editJson = await editRes.json();
+    if (!editJson || editJson.code !== 0) return { code: editJson && editJson.code, message: editJson && editJson.message, stage: 'edit_article' };
+    const article = editJson.data || {};
+    const volumeRes = await fetch('/app/book/volume_list/v0/?book_id=${bookId}&order=1', { credentials: 'include' });
+    const volumeJson = await volumeRes.json();
+    const volume = (volumeJson && volumeJson.data && volumeJson.data.volume_list || [])[0] || {};
+    const form = new URLSearchParams();
+    const fields = {
+      book_id: ${JSON.stringify(String(bookId))},
+      item_id: ${JSON.stringify(String(row.item_id))},
+      title: ${JSON.stringify(expectedTitle)},
+      content: ${JSON.stringify(bodyToHtml(chapter.body))},
+      volume_id: String(article.volume_id || volume.volume_id || ''),
+      volume_name: String(article.volume_name || volume.volume_name || ''),
+      device_platform: 'pc',
+      item_version: String(article.latest_version || article.item_version || '')
+    };
+    for (const [key, value] of Object.entries(fields)) form.set(key, value);
+    const saveRes = await fetch('/app/book/cover_article/v0/', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+      body: form.toString()
+    });
+    const text = await saveRes.text();
+    let json;
+    try { json = JSON.parse(text); } catch (_) { json = { code: -99999, body: text.slice(0, 1000) }; }
+    return { ...json, stage: 'cover_article', volume_id: fields.volume_id };
+  })()`);
+  if (!payload || payload.code !== 0) {
+    throw new Error(`Blank-draft repair failed for item=${row.item_id}: ${JSON.stringify(payload)}`);
+  }
+  const after = await fetchDraftList(Runtime, bookId);
+  const saved = (after.draft_list || []).find(item => String(item.item_id) === String(row.item_id));
+  if (!saved) throw new Error(`Blank-draft repair removed item unexpectedly: ${row.item_id}`);
+  await verifySavedArticle(Runtime, bookId, saved, chapter);
+  return saved;
+}
+
 async function collectDraftTitles(Runtime, bookId) {
   const result = await fetchDraftList(Runtime, bookId);
   const titles = new Set();
@@ -790,6 +837,11 @@ async function createDraftWithRecovery(client, bookId, bookDir, chapter, attempt
       if (exact.length > 1) throw new Error(`Retry blocked: duplicate drafts already exist for ${expected}`);
       const newRows = (after.draft_list || []).filter(row => !beforeIds.has(String(row.item_id)));
       if (newRows.length) {
+        if (newRows.length === 1) {
+          const repaired = await repairUnexpectedBlankDraft(Runtime, bookId, newRows[0], chapter);
+          console.log(`RECOVERED_PARTIAL ${expected}`);
+          return repaired;
+        }
         throw new Error(`Retry blocked after partial save for ${expected}; new unexpected drafts: ${newRows.map(row => `${row.item_id}:${row.title || '未命名草稿'}`).join(', ')}`);
       }
       if (attempt < attempts) {
@@ -835,9 +887,10 @@ async function commandDrafts(bookDir, bookId, chapters, port, options = {}) {
       const matches = initial.grouped.get(chapter.no) || [];
       if (matches.length === 1) {
         console.log(`SKIP_${matches[0].platformState.toUpperCase()} ${expected}`);
-        continue;
+      } else {
+        await createDraftWithRecovery(client, bookId, bookDir, chapter, options.attempts || 3);
       }
-      await createDraftWithRecovery(client, bookId, bookDir, chapter, options.attempts || 3);
+      console.log(JSON.stringify({ event: 'chapter_verified', chapter_no: chapter.no }));
     }
     await verifyRequestedDrafts(Runtime, bookId, chapters);
     console.log(`UPLOAD_OK ${chapters.length} chapters`);
@@ -849,6 +902,10 @@ async function commandDrafts(bookDir, bookId, chapters, port, options = {}) {
 async function commandVerify(bookId, chapters, port, options = {}) {
   const client = await connect(port);
   try {
+    // A fresh leased browser can expose about:blank before its startup URL has
+    // committed.  Verify uses relative backend APIs, so establish the Fanqie
+    // origin explicitly instead of depending on CDP's initial target choice.
+    await navigate(client.Page, 'https://fanqienovel.com/writer/zone');
     await verifyAccount(client.Runtime, options.expectedAccount);
     await verifyRequestedDrafts(client.Runtime, bookId, chapters);
     console.log(`VERIFY_OK ${chapters.length} chapters`);

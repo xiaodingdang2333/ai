@@ -15,7 +15,7 @@ import re
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +27,31 @@ LOCK_PATH = Path("/tmp/novel-git-write-worker.lock")
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+
+
+def retry_after_usage_limit(stderr: str) -> str | None:
+    """Extract Codex's displayed local retry time without retrying every timer tick."""
+    match = re.search(r"try again at\s+(\d{1,2}):(\d{2})\s*([AP]M)", stderr, re.I)
+    if not match:
+        return None
+    hour = int(match.group(1)) % 12
+    if match.group(3).upper() == "PM":
+        hour += 12
+    now = datetime.now(timezone.utc).astimezone()
+    retry_at = now.replace(hour=hour, minute=int(match.group(2)), second=0, microsecond=0)
+    if retry_at <= now:
+        retry_at += timedelta(days=1)
+    return retry_at.isoformat(timespec="seconds")
+
+
+def retry_is_due(request: dict[str, Any]) -> bool:
+    value = request.get("retry_after")
+    if not value:
+        return True
+    try:
+        return datetime.fromisoformat(str(value)).astimezone() <= datetime.now(timezone.utc).astimezone()
+    except ValueError:
+        return True
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -250,8 +275,6 @@ def run_codex(repo: Path, prompt: str, output_path: Path, timeout_seconds: int) 
         str(repo),
         "--sandbox",
         "danger-full-access",
-        "--ask-for-approval",
-        "never",
         "--output-last-message",
         str(output_path),
         prompt,
@@ -278,8 +301,8 @@ def run_codex(repo: Path, prompt: str, output_path: Path, timeout_seconds: int) 
 
 def validate_request(repo: Path, request: dict[str, Any]) -> list[str]:
     errors: list[str] = []
-    if request.get("status") not in {"pending", "failed"}:
-        errors.append("request status is not pending/failed")
+    if request.get("status") not in {"pending", "retry_scheduled"}:
+        errors.append("request status is not pending/retry_scheduled")
     if request.get("allow_server_codex") is not True:
         errors.append("allow_server_codex must be true")
     if request.get("target_mode") != "continue_formal":
@@ -352,18 +375,25 @@ def process_request(repo: Path, request_path: Path, execute: bool, timeout_secon
     codex_result = run_codex(repo, prompt, output_path, timeout_seconds)
     changed_paths.append(output_path)
     if codex_result["status"] != "ok":
-        request["status"] = "failed"
+        retry_after = retry_after_usage_limit(codex_result.get("stderr_tail", ""))
+        request["status"] = "retry_scheduled" if retry_after else "failed"
         request["updated_at"] = now_iso()
+        if retry_after:
+            request["retry_after"] = retry_after
+        else:
+            request.pop("retry_after", None)
         write_json(request_path, request)
         result = {
             "schema_version": "1.0",
             "request_id": request_id,
-            "status": "failed",
+            "status": request["status"],
             "updated_at": now_iso(),
             "project_path": request["project_path"],
             "planned_range": {"from_chapter": from_chapter, "to_chapter": to_chapter},
             "codex": codex_result,
         }
+        if retry_after:
+            result["retry_after"] = retry_after
         status_path = result_dir / "status.json"
         write_json(status_path, result)
         changed_paths.append(status_path)
@@ -428,7 +458,9 @@ def process_requests(repo: Path, execute: bool, limit: int, timeout_seconds: int
     for request_path in sorted(pending.glob("*.json"))[:limit]:
         try:
             request = load_json(request_path)
-            if request.get("status") not in {"pending", "failed"}:
+            if request.get("status") not in {"pending", "retry_scheduled"}:
+                continue
+            if request.get("status") == "retry_scheduled" and not retry_is_due(request):
                 continue
             result, paths = process_request(repo, request_path, execute, timeout_seconds)
             processed.append({
