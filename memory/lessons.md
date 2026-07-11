@@ -41,3 +41,4 @@
 - 2026-07-11: 网页Git写作的新章使用`章节事实账本/CHxxx.json`分片，绑定正文SHA、事实分类和state_apply_plan；不要要求网页重写不断增长的`08_章节事实账本.md`。服务器恢复只接受分片、当前Blob P0/READY和已应用状态同时匹配的事务。
 - 2026-07-11: 服务器重启后番茄Chromium可能因Xvfb :99和`/run/user/0/snap.chromium`未恢复而失败。必须启用`xvfb-99.service`，浏览器租约启动前修复root运行目录并等待X11 socket；ChatGPT与番茄浏览器串行。修复后已在“西大水怪”账号逐章回读《她们都以为我只救了她》第1—3章草稿。
 - 2026-07-11: 番茄建书前先检测平台额度；出现“创建作品数超出每月上限”时返回`PLATFORM_CREATE_LIMIT`，不得继续点击或伪报成功。人工兜底用`fanqie-book-package.js`导出书名、标签、主角、简介、封面提示词和600x800封面文件状态。
+- 2026-07-11: 番茄浏览器租约不能用`systemd-run --collect`临时拉起ChatGPT；临时unit会被回收，导致9224端口不恢复。改为开机启用的`chatgpt-web-browser.service`，租约结束后`systemctl start`并等待CDP；恢复失败必须把租约命令判为失败。已通过“占用番茄浏览器→释放→ChatGPT最小对话”复测。

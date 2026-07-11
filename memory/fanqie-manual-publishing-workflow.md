@@ -44,3 +44,4 @@
 - 修复：网页正文先进入`FORMAL_WRITTEN_PENDING_MACHINE_P0`；服务器绑定当前Git Blob运行P0/READY；新章使用`章节事实账本/CHxxx.json`；恢复器核对分片、SHA、机器证据和state_applied；启用`xvfb-99.service`并由浏览器租约修复root运行目录。
 - 平台验收：账号`西大水怪`，作品《她们都以为我只救了她》，第001—003章均由`fanqie-upload.js verify`返回`VERIFIED_DRAFT`，未自动发布。
 - 防复发：上传worker每分钟扫描待机器P0和待上传事务；上传前再次独立重跑P0/READY；ChatGPT与番茄浏览器串行租约；建书先检查平台月度额度。
+- 补充：ChatGPT浏览器使用持久`chatgpt-web-browser.service`，番茄租约结束后必须等待9224恢复；不得再使用会被回收的临时`systemd-run --collect`恢复方式。
