@@ -105,6 +105,36 @@ async function main() {
       });
       if (!opened.result.value) throw new Error('Could not locate the create-book menu item');
       await sleep(1800);
+      const formState = await Runtime.evaluate({
+        returnByValue: true,
+        expression: `(() => {
+          const text = document.body.innerText || '';
+          const visibleInputs = [...document.querySelectorAll('input,textarea')]
+            .filter(node => {
+              const rect = node.getBoundingClientRect();
+              return rect.width > 0 && rect.height > 0;
+            }).length;
+          return {
+            url: location.href,
+            monthlyLimit: text.includes('创建作品数超出每月上限'),
+            visibleInputs,
+            formReady: location.href !== 'https://fanqienovel.com/main/writer/book-manage' || visibleInputs > 0,
+          };
+        })()`,
+      });
+      if (formState.result.value.monthlyLimit) {
+        emit({
+          status: 'PLATFORM_CREATE_LIMIT',
+          reason: '创建作品数超出每月上限',
+          account_action_required: true,
+          page: formState.result.value,
+        });
+        process.exitCode = 3;
+        return;
+      }
+      if (!formState.result.value.formReady) {
+        throw new Error(`Fanqie create form did not open: ${JSON.stringify(formState.result.value)}`);
+      }
     }
     const result = await Runtime.evaluate({
       returnByValue: true,
@@ -135,7 +165,7 @@ async function main() {
           })),
       }))()`,
     });
-    emit({hover: hover.result.value, page: result.result.value});
+    emit({status: mode === 'form' ? 'CREATE_FORM_READY' : 'INSPECT_OK', hover: hover.result.value, page: result.result.value});
   } finally {
     await client.close();
   }
