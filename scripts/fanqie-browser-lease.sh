@@ -86,7 +86,7 @@ ensure_browser_runtime() {
 }
 
 main() {
-  [[ "${1:-}" == run && $# -ge 5 ]] || { usage; exit 2; }
+  [[ "${1:-}" == run && $# -ge 4 ]] || { usage; exit 2; }
   local account="$2" port="$3"
   shift 3
   LEASE_ACCOUNT="$account"
@@ -108,12 +108,10 @@ main() {
       save_profile "$LEASE_ACCOUNT" || true
     fi
     if [[ "$LEASE_CHATGPT_WAS_ACTIVE" -eq 1 ]]; then
-      systemd-run --unit=chatgpt-web-browser --collect --service-type=exec \
-        --property=Environment=HOME=/root --property=Environment=DISPLAY=:99 \
-        /root/.cache/puppeteer/chrome/linux-131.0.6778.204/chrome-linux64/chrome \
-        --no-sandbox --disable-dev-shm-usage --disable-gpu --no-first-run --password-store=basic \
-        --remote-debugging-address=127.0.0.1 --remote-debugging-port=9224 --remote-allow-origins='*' \
-        --user-data-dir=/home/admin/ai/.chatgpt-web-profile about:blank >/dev/null 2>&1 || true
+      if ! systemctl start "$CHATGPT_UNIT" || ! wait_cdp 9224; then
+        echo "ChatGPT browser did not recover after Fanqie account lease" >&2
+        rc=1
+      fi
     fi
     exit "$rc"
   }
