@@ -249,6 +249,157 @@ def formal_chapter_file(project_path: Path, no: int) -> Path | None:
     return matches[0] if len(matches) == 1 else None
 
 
+def strong_qa_for_blob(project_path: Path, digest: str, blob_sha: str) -> Path | None:
+    for path in reversed(sorted((project_path / "audits").glob("CHAPTER_STRONG_QA_*.md"))):
+        text = path.read_text(encoding="utf-8")
+        if digest in text and blob_sha in text and "NO_EFFECTIVE_ISSUE" in text:
+            return path
+    return None
+
+
+def evaluate_pending_web_machine_gates(repo: Path, execute: bool) -> list[dict[str, Any]]:
+    """Run current-blob P0 for web chapters that explicitly await the server.
+
+    This phase never uploads and never applies semantic state deltas. It only
+    turns a committed web candidate into machine PASS/FAIL evidence and routes
+    the next web session to either repair or state application.
+    """
+    updates: list[dict[str, Any]] = []
+    current_path = repo / "CURRENT.json"
+    current = load_json(current_path) if current_path.exists() else {}
+    for project_file in sorted((repo / "novels").glob("*/00_PROJECT.json")):
+        try:
+            data = load_json(project_file)
+        except Exception:
+            continue
+        if data.get("next_action") != "SERVER_RUN_MACHINE_P0_FOR_CH003_CURRENT_BLOB" and not str(data.get("next_action") or "").startswith("SERVER_RUN_MACHINE_P0_FOR_CH"):
+            continue
+        project_path = project_file.parent
+        no = chapter_number(data.get("pending_machine_gate", {}).get("chapter"))
+        if no <= 0:
+            no = chapter_number(data.get("formal_until")) + 1
+        chapter = f"CH{no:03d}"
+        formal_path = formal_chapter_file(project_path, no)
+        transaction_path = project_path / "提交事务" / f"COMMIT_{chapter}_R1.json"
+        ledger_path = project_path / "章节事实账本" / f"{chapter}.json"
+        if formal_path is None or not transaction_path.exists() or not ledger_path.exists():
+            continue
+        transaction = load_json(transaction_path)
+        if transaction.get("status") not in {"FORMAL_WRITTEN", "FORMAL_WRITTEN_PENDING_MACHINE_P0"}:
+            continue
+        digest = file_sha256(formal_path)
+        blob_sha = git_blob_sha(formal_path, repo)
+        machine = transaction.get("machine_p0") if isinstance(transaction.get("machine_p0"), dict) else {}
+        if machine.get("formal_git_blob_sha") == blob_sha and machine.get("result") in {"PASS", "FAIL"}:
+            continue
+
+        available = [
+            n for n in (chapter_no_from_name(path) for path in (project_path / "formal").glob("CH*.md"))
+            if n is not None
+        ]
+        stamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        p0_path = project_path / "audits" / f"SERVER_WEB_P0_{chapter}_{stamp}.json"
+        ready_path = project_path / "audits" / f"SERVER_WEB_READY_{chapter}_{stamp}.json"
+        errors: list[str] = []
+        if han_count(formal_path.read_text(encoding="utf-8")) < 2500:
+            errors.append("chapter has fewer than 2500 Chinese Han characters")
+        p0_result = None
+        ready_result = None
+        if not errors:
+            p0_result = run_repo_script(repo, [
+                sys.executable,
+                str(repo / "scripts" / "p0_dialogue_visual_hard_gate_v2.py"),
+                "--formal-dir", str((project_path / "formal").relative_to(repo)),
+                "--reference-from", "1",
+                "--reference-to", str(max(available)),
+                "--target-from", str(no),
+                "--target-to", str(no),
+                "--output-json", str(p0_path.relative_to(repo)),
+            ]) if execute else {"status": "dry_run"}
+            if execute and p0_result["status"] != "ok":
+                errors.append("machine P0 failed")
+        if execute and not errors:
+            ready_result = run_repo_script(repo, [
+                sys.executable,
+                str(repo / "scripts" / "validate_ready_promotion_v22.py"),
+                "--formal-dir", str((project_path / "formal").relative_to(repo)),
+                "--p0-manifest", str(p0_path.relative_to(repo)),
+                "--from-chapter", str(no),
+                "--to-chapter", str(no),
+                "--output-json", str(ready_path.relative_to(repo)),
+            ])
+            if ready_result["status"] != "ok":
+                errors.append("READY current-blob validation failed")
+
+        passed = execute and not errors
+        changed_paths = [p for p in [p0_path, ready_path] if p.exists()]
+        if execute:
+            qa_path = strong_qa_for_blob(project_path, digest, blob_sha)
+            result = "PASS" if passed else "FAIL"
+            transaction["status"] = "MACHINE_P0_PASSED" if passed else "FORMAL_WRITTEN_PENDING_MACHINE_P0"
+            transaction["qa_result"] = "PASS" if passed and qa_path else ("PENDING_MACHINE_P0" if passed else "FAIL")
+            transaction["machine_p0"] = {
+                "result": result,
+                "formal_git_blob_sha": blob_sha,
+                "manifest_path": str(p0_path.relative_to(project_path)),
+                "ready_manifest_path": str(ready_path.relative_to(project_path)) if ready_path.exists() else "",
+                "strong_qa_path": str(qa_path.relative_to(project_path)) if qa_path else "",
+                "validation_required": False,
+                "blocking_reasons": errors,
+            }
+            write_json(transaction_path, transaction)
+            ledger = load_json(ledger_path)
+            ledger["qa_result"] = "PASS" if passed and qa_path else ("PENDING_MACHINE_P0" if passed else "FAIL")
+            write_json(ledger_path, ledger)
+            if passed and qa_path:
+                next_action = "WEB_APPLY_CHAPTER_STATE_AND_CLOSE_TRANSACTION"
+            elif passed:
+                next_action = "WEB_COMPLETE_STRONG_QA_AND_APPLY_CHAPTER_STATE"
+            else:
+                next_action = "WEB_REVISE_CHAPTER_FROM_MACHINE_P0_FAILURE"
+            status = f"{chapter}_MACHINE_P0_PASSED_WEB_STATE_APPLY_REQUIRED" if passed else f"{chapter}_MACHINE_P0_FAILED_WEB_REPAIR_REQUIRED"
+            data["project_status"] = status
+            data["next_action"] = next_action
+            data["auto_upload_to_drafts"] = False
+            data["upload_status"] = "not_ready_machine_p0_passed_state_pending" if passed else "not_ready_machine_p0_failed"
+            data["pending_machine_gate"] = {
+                "chapter": chapter,
+                "result": result,
+                "formal_utf8_sha256": digest,
+                "formal_git_blob_sha": blob_sha,
+                "manifest_path": str(p0_path.relative_to(project_path)),
+                "ready_manifest_path": str(ready_path.relative_to(project_path)) if ready_path.exists() else "",
+                "strong_qa_path": str(qa_path.relative_to(project_path)) if qa_path else "",
+                "repair_required": not passed,
+                "server_validation_required": False,
+            }
+            data["updated_at"] = now_iso()
+            write_json(project_file, data)
+            project_rel = str(project_path.relative_to(repo))
+            record = current.get("novels", {}).get(data.get("book_id")) if isinstance(current, dict) else None
+            if isinstance(record, dict):
+                record["status"] = status
+                record["next_action"] = next_action
+            task = current.get("current_task") if isinstance(current, dict) else None
+            if isinstance(task, dict) and task.get("project_path") == project_rel:
+                task["phase"] = status
+                task["next_action"] = next_action
+            if isinstance(current, dict):
+                current["updated_at"] = now_iso()
+                write_json(current_path, current)
+            changed_paths.extend([transaction_path, ledger_path, project_file, current_path])
+        updates.append({
+            "project_file": str(project_file.relative_to(repo)),
+            "chapter": chapter,
+            "status": "passed" if passed else ("failed" if execute else "pending_dry_run"),
+            "errors": errors,
+            "p0": p0_result,
+            "ready": ready_result,
+            "paths": [str(path.relative_to(repo)) for path in changed_paths if path.exists()],
+        })
+    return updates
+
+
 def recoverable_formal_evidence(project_path: Path, no: int, formal_path: Path) -> tuple[bool, dict[str, Any]]:
     """Accept only a web formal chapter whose committed evidence matches its bytes.
 
@@ -258,41 +409,34 @@ def recoverable_formal_evidence(project_path: Path, no: int, formal_path: Path) 
     evidence before a server can restore the missing project-state commit.
     """
     chapter = f"CH{no:03d}"
-    content_paths = sorted((project_path / "证据").glob(f"{chapter}_CONTENT_GATE_*.json"))
     digest = file_sha256(formal_path)
-    content = None
-    for path in reversed(content_paths):
-        try:
-            payload = load_json(path)
-        except Exception:
-            continue
-        source = str(payload.get("source_path") or "")
-        if (
-            payload.get("result") == "PASS"
-            and payload.get("min_hanzi_pass") is True
-            and payload.get("utf8_sha256") == digest
-            and source.endswith(formal_path.name)
-        ):
-            content = {"path": path, "payload": payload}
-            break
-    if content is None:
-        return False, {"reason": "matching_content_gate_missing", "formal_sha256": digest}
-
-    qa_path = project_path / "09_QA问题与修复记录.md"
-    ledger_path = project_path / "08_章节事实账本.md"
-    qa_text = qa_path.read_text(encoding="utf-8") if qa_path.exists() else ""
-    ledger_text = ledger_path.read_text(encoding="utf-8") if ledger_path.exists() else ""
-    qa_markers = [f"## {chapter}-", "### Chapter Strong QA", "结论：PASS", f"CHECKPOINT_{chapter}"]
-    if not all(marker in qa_text for marker in qa_markers):
-        return False, {"reason": "strong_qa_evidence_missing", "formal_sha256": digest}
-    if f"## CHLEDGER-{chapter}" not in ledger_text or "qa_result：PASS" not in ledger_text:
-        return False, {"reason": "chapter_ledger_missing_or_not_passed", "formal_sha256": digest}
+    blob_sha = git_blob_sha(formal_path, project_path.parents[1])
+    transaction_path = project_path / "提交事务" / f"COMMIT_{chapter}_R1.json"
+    ledger_path = project_path / "章节事实账本" / f"{chapter}.json"
+    if not transaction_path.exists() or not ledger_path.exists():
+        return False, {"reason": "transaction_or_sharded_ledger_missing", "formal_sha256": digest}
+    transaction = load_json(transaction_path)
+    ledger = load_json(ledger_path)
+    if transaction.get("state_applied") is not True or transaction.get("status") not in {"STATE_APPLIED", "ROUTE_UPDATED"}:
+        return False, {"reason": "semantic_state_not_applied", "formal_sha256": digest}
+    if transaction.get("formal_utf8_sha256") != digest or ledger.get("formal_utf8_sha256") != digest:
+        return False, {"reason": "formal_hash_mismatch", "formal_sha256": digest}
+    machine = transaction.get("machine_p0") if isinstance(transaction.get("machine_p0"), dict) else {}
+    if machine.get("result") != "PASS" or machine.get("formal_git_blob_sha") != blob_sha:
+        return False, {"reason": "current_blob_machine_p0_missing", "formal_sha256": digest}
+    if ledger.get("qa_result") != "PASS":
+        return False, {"reason": "chapter_ledger_not_passed", "formal_sha256": digest}
+    qa_path = project_path / str(machine.get("strong_qa_path") or "")
+    p0_path = project_path / str(machine.get("manifest_path") or "")
+    ready_path = project_path / str(machine.get("ready_manifest_path") or "")
+    if not qa_path.is_file() or not p0_path.is_file() or not ready_path.is_file():
+        return False, {"reason": "machine_or_strong_qa_evidence_missing", "formal_sha256": digest}
     return True, {
         "formal_sha256": digest,
-        "content_gate_path": content["path"],
+        "content_gate_path": qa_path,
         "qa_path": qa_path,
         "ledger_path": ledger_path,
-        "hanzi_count": content["payload"].get("chinese_hanzi_count"),
+        "hanzi_count": han_count(formal_path.read_text(encoding="utf-8")),
     }
 
 
@@ -618,8 +762,35 @@ def process_candidate(repo: Path, project_file: Path, execute: bool) -> dict[str
     verify = run_command(verify_command, execute)
 
     status = "dry_run" if not execute else ("uploaded_to_drafts" if verify["status"] == "ok" else "verify_failed")
+    state_paths: list[Path] = []
     if execute and status == "uploaded_to_drafts":
+        uploaded_status = f"CH{to_chapter:03d}_UPLOADED_TO_DRAFTS"
+        next_action = f"CONTINUE_NOVEL_FROM_CH{to_chapter + 1:03d}"
+        current_path = repo / "CURRENT.json"
+        current = load_json(current_path) if current_path.exists() else None
+        if isinstance(current, dict):
+            current_task = current.get("current_task")
+            if (
+                isinstance(current_task, dict)
+                and current_task.get("project_path") == str(project_file.parent.relative_to(repo))
+                and current_task.get("type") == "WEB_SERVER_E2E_MALE_HAREM_NOVEL_PRODUCTION_TEST"
+                and to_chapter == 2
+            ):
+                uploaded_status = "CH002_UPLOADED_TO_DRAFTS_READY_FOR_WEB_CH003"
+                next_action = "WEB_NEW_CHAT_RESUME_AND_WRITE_CH003"
+            elif (
+                isinstance(current_task, dict)
+                and current_task.get("project_path") == str(project_file.parent.relative_to(repo))
+                and current_task.get("type") == "WEB_SERVER_E2E_MALE_HAREM_NOVEL_PRODUCTION_TEST"
+                and to_chapter == 3
+            ):
+                uploaded_status = "CH003_UPLOADED_TO_DRAFTS_E2E_COMPLETE"
+                next_action = "CONTINUE_NOVEL_FROM_CH004"
+        data["auto_upload_to_drafts"] = False
         data["upload_status"] = "uploaded_to_drafts"
+        data["project_status"] = uploaded_status
+        data["next_action"] = next_action
+        data["updated_at"] = now_iso()
         data["last_upload"] = {
             "uploaded_at": now_iso(),
             "export_dir": str(export_dir),
@@ -627,6 +798,29 @@ def process_candidate(repo: Path, project_file: Path, execute: bool) -> dict[str
             "to_chapter": to_chapter,
         }
         write_json(project_file, data)
+        state_paths.append(project_file)
+        if isinstance(current, dict):
+            project_rel = str(project_file.parent.relative_to(repo))
+            novels = current.get("novels")
+            if isinstance(novels, dict):
+                for novel in novels.values():
+                    if isinstance(novel, dict) and novel.get("project_path") == project_rel:
+                        novel["status"] = uploaded_status
+                        novel["formal_until"] = max(int(novel.get("formal_until") or 0), to_chapter)
+                        novel["next_action"] = next_action
+            current_task = current.get("current_task")
+            if isinstance(current_task, dict) and current_task.get("project_path") == project_rel:
+                current_task["phase"] = uploaded_status
+                current_task["status"] = "COMPLETED" if uploaded_status.endswith("E2E_COMPLETE") else uploaded_status
+                current_task["upload_status"] = "uploaded_to_drafts"
+                current_task["formal_until"] = max(int(current_task.get("formal_until") or 0), to_chapter)
+                current_task["next_action"] = next_action
+            short_command = current.get("short_command_protocol")
+            if isinstance(short_command, dict) and uploaded_status.endswith("E2E_COMPLETE"):
+                short_command["current_required_terminal_state"] = uploaded_status
+            current["updated_at"] = now_iso()
+            write_json(current_path, current)
+            state_paths.append(current_path)
     return {
         "project_file": str(project_file.relative_to(repo)),
         "status": status,
@@ -634,6 +828,7 @@ def process_candidate(repo: Path, project_file: Path, execute: bool) -> dict[str
         "chapter_count": manifest["chapter_count"],
         "quality_gate": quality,
         "quality_report_paths": [str(path.relative_to(repo)) for path in quality_paths],
+        "state_paths": [str(path.relative_to(repo)) for path in state_paths],
         "scan": scan,
         "drafts": drafts,
         "verify": verify,
@@ -654,6 +849,7 @@ def main() -> int:
     if not (repo / ".git").exists():
         print(f"not a Git repository: {repo}", file=sys.stderr)
         return 2
+    machine_gate_updates = evaluate_pending_web_machine_gates(repo, args.execute)
     recovery_updates = recover_interrupted_web_transactions(repo, args.execute)
     candidates = []
     for project_file in sorted((repo / "novels").glob("*/00_PROJECT.json")):
@@ -674,14 +870,19 @@ def main() -> int:
             for item in results
             if item["status"] == "uploaded_to_drafts"
         ]
+        for item in results:
+            updated.extend(repo / path for path in item.get("state_paths", []))
         for recovery in recovery_updates:
             updated.extend(repo / path for path in recovery.get("paths", []))
+        for machine_gate in machine_gate_updates:
+            updated.extend(repo / path for path in machine_gate.get("paths", []))
         for item in results:
             for report in item.get("quality_report_paths", []):
                 updated.append(repo / report)
         git_result = safe_git_record(repo, updated, f"upload: mark Fanqie drafts uploaded {now_iso()}", args.git_push)
     output = {
         "execute": args.execute,
+        "machine_gates": machine_gate_updates,
         "recovery": recovery_updates,
         "processed": results,
         "failed_count": len(failed),

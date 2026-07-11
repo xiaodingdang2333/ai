@@ -367,6 +367,30 @@ def process_request(repo: Path, request_path: Path, execute: bool, timeout_secon
             "dry_run": True,
         }, []
 
+    target_status = run_git(
+        repo,
+        ["status", "--porcelain", "--", request["project_path"], "CURRENT.json"],
+        check=False,
+    ).stdout.strip()
+    if target_status:
+        request["status"] = "failed"
+        request["updated_at"] = now_iso()
+        write_json(request_path, request)
+        result = {
+            "schema_version": "1.0",
+            "request_id": request_id,
+            "status": "failed",
+            "updated_at": now_iso(),
+            "project_path": request["project_path"],
+            "planned_range": {"from_chapter": from_chapter, "to_chapter": to_chapter},
+            "errors": ["target project or CURRENT.json has uncommitted state; refusing a non-atomic server write"],
+            "dirty_paths": target_status.splitlines(),
+        }
+        status_path = result_dir / "status.json"
+        write_json(status_path, result)
+        changed_paths.append(status_path)
+        return result, changed_paths
+
     request["status"] = "running"
     request["updated_at"] = now_iso()
     write_json(request_path, request)
@@ -403,6 +427,14 @@ def process_request(repo: Path, request_path: Path, execute: bool, timeout_secon
     missing = [no for no in range(from_chapter, to_chapter + 1) if no not in chapters_after]
     new_chapter_paths = [chapters_after[no] for no in range(from_chapter, to_chapter + 1) if no in chapters_after]
     changed_paths.extend(new_chapter_paths)
+    # The Codex transaction updates ledgers, contracts, handoff snapshots and
+    # CURRENT.json in addition to formal prose. The target was verified clean
+    # before launch, so every changed file under this project belongs to this
+    # request and must be committed atomically for web-session recovery.
+    changed_paths.extend(path for path in project_path.rglob("*") if path.is_file())
+    current_path = repo / "CURRENT.json"
+    if current_path.exists():
+        changed_paths.append(current_path)
     quality_ok = False
     quality: dict[str, Any] | None = None
     quality_paths: list[Path] = []

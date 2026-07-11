@@ -69,6 +69,22 @@ wait_cdp() {
   return 1
 }
 
+ensure_browser_runtime() {
+  # After a reboot there may be no interactive root session yet. Snap
+  # Chromium cannot create /run/user/0 from inside confinement, and no browser
+  # can render until the shared Xvfb display exists.
+  systemctl start user-runtime-dir@0.service 2>/dev/null || true
+  install -d -m 700 -o root -g root /run/user/0 /run/user/0/snap.chromium
+  systemctl start xvfb-99.service
+  local i
+  for i in $(seq 1 20); do
+    [[ -S /tmp/.X11-unix/X99 ]] && return 0
+    sleep 1
+  done
+  echo "Xvfb display :99 did not become ready" >&2
+  return 1
+}
+
 main() {
   [[ "${1:-}" == run && $# -ge 5 ]] || { usage; exit 2; }
   local account="$2" port="$3"
@@ -104,6 +120,7 @@ main() {
   trap cleanup EXIT INT TERM
 
   stop_fanqie
+  ensure_browser_runtime
   restore_profile "$account"
   systemd-run --unit=fanqie-account-lease --collect --service-type=exec \
     --property=Environment=HOME=/root --property=Environment=DISPLAY=:99 \
