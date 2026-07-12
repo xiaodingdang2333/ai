@@ -369,13 +369,14 @@ def publish_progress(
     git_commit: bool,
     git_push: bool,
     message: str,
+    extra_paths: list[Path] | None = None,
 ) -> dict[str, Any] | None:
     status_path = repo / "sample-results" / payload["request_id"] / "status.json"
     write_json(request_path, request)
     write_json(status_path, payload)
     if not git_commit:
         return None
-    return safe_git_record(repo, [request_path, status_path], message, git_push)
+    return safe_git_record(repo, [request_path, status_path, *(extra_paths or [])], message, git_push)
 
 
 def status_for_request(
@@ -412,6 +413,7 @@ def status_for_request(
             "legal_access_status": basis,
             "identity_confidence": book.get("identity_confidence", "unknown"),
         }
+        created_packet_path: Path | None = None
         if execute:
             pending_record = {
                 **base_record,
@@ -470,6 +472,7 @@ def status_for_request(
                 packet_path = packet_dir / f"{index:03d}_{safe_slug(title, 'book')}.json"
                 packet = export_web_packet(output, packet_path, book)
                 packet_paths.append(packet_path)
+                created_packet_path = packet_path
                 effective += 1
                 status_books.append({
                     **base_record,
@@ -478,6 +481,7 @@ def status_for_request(
                     "packet_path": str(packet_path.relative_to(repo)),
                     "packet_kind": packet.get("packet_kind"),
                     "packet_generated_at": now_iso(),
+                    "packet_git_push_status": "pending",
                     "web_analysis_ready": packet.get("web_analysis_ready"),
                     "source_quality_audit": source_quality,
                 })
@@ -489,7 +493,7 @@ def status_for_request(
                 "failure_reason": output[:1000],
             })
         if execute:
-            publish_progress(
+            git_result = publish_progress(
                 repo,
                 request_path,
                 request,
@@ -506,7 +510,36 @@ def status_for_request(
                 git_commit,
                 git_push,
                 f"samples: progress {request_id} effective {effective}",
+                [created_packet_path] if created_packet_path else None,
             )
+            if created_packet_path:
+                if not git_commit:
+                    push_status = "not_requested"
+                elif git_result and git_result.get("status") == "committed":
+                    push_status = str(git_result.get("push_status") or "committed_local")
+                else:
+                    push_status = "commit_failed"
+                status_books[-1]["packet_git_push_status"] = push_status
+                if push_status in {"pushed", "committed_local"}:
+                    status_books[-1]["packet_uploaded_at"] = now_iso()
+                publish_progress(
+                    repo,
+                    request_path,
+                    request,
+                    progress_payload(
+                        request,
+                        request_path,
+                        repo,
+                        "packet_git_status",
+                        f"Packet Git status: {push_status}.",
+                        status_books,
+                        index,
+                        {"title": title, "author": author, "channel": book.get("channel")},
+                    ),
+                    git_commit,
+                    git_push,
+                    f"samples: packet Git status {request_id} {index}",
+                )
         if effective >= min_effective:
             break
 
