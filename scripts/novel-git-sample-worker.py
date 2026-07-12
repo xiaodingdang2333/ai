@@ -477,6 +477,7 @@ def status_for_request(
                     "quality_status": "effective",
                     "packet_path": str(packet_path.relative_to(repo)),
                     "packet_kind": packet.get("packet_kind"),
+                    "packet_generated_at": now_iso(),
                     "web_analysis_ready": packet.get("web_analysis_ready"),
                     "source_quality_audit": source_quality,
                 })
