@@ -42,3 +42,4 @@
 - 2026-07-11: 服务器重启后番茄Chromium可能因Xvfb :99和`/run/user/0/snap.chromium`未恢复而失败。必须启用`xvfb-99.service`，浏览器租约启动前修复root运行目录并等待X11 socket；ChatGPT与番茄浏览器串行。修复后已在“西大水怪”账号逐章回读《她们都以为我只救了她》第1—3章草稿。
 - 2026-07-11: 番茄建书前先检测平台额度；出现“创建作品数超出每月上限”时返回`PLATFORM_CREATE_LIMIT`，不得继续点击或伪报成功。人工兜底用`fanqie-book-package.js`导出书名、标签、主角、简介、封面提示词和600x800封面文件状态。
 - 2026-07-11: 番茄浏览器租约不能用`systemd-run --collect`临时拉起ChatGPT；临时unit会被回收，导致9224端口不恢复。改为开机启用的`chatgpt-web-browser.service`，租约结束后`systemctl start`并等待CDP；恢复失败必须把租约命令判为失败。已通过“占用番茄浏览器→释放→ChatGPT最小对话”复测。
+- 2026-07-12: 网页Git拆书默认由服务器 worker 做候选下载、清洗、质量检查与 packet 回写，网页 ChatGPT 只在 packet 齐备后做深度拆书。实时进度统一在 8090 的“小说模块→拆书 Packet 进度”查看，5 秒只读刷新并提供手动刷新；不要为了看进度让网页 ChatGPT 高频轮询。状态必须展示候选池、已尝试/有效数、逐书失败原因、packet 路径和更新时间；新增 packet 记录应带`packet_generated_at`。
