@@ -212,4 +212,4 @@ When writing new chapters, create or verify the matching `大纲/细纲_第XXX�
 - 2026-07-11: 当前网页Git小说流程中，模型自报Strong QA PASS不是机器证据。网页新章必须先提交正文、绑定当前SHA的语义审稿和`章节事实账本/CHxxx.json`，事务停在`FORMAL_WRITTEN_PENDING_MACHINE_P0`；服务器脚本对current blob生成P0/READY后才允许状态应用和草稿上传。正文任何改动都使旧证据失效。
 - 2026-07-11: 番茄浏览器需由`xvfb-99.service`和`fanqie-browser-lease.sh`恢复X11及`/run/user/0/snap.chromium`，并与ChatGPT浏览器串行。建书前运行额度预检；月度上限时返回`PLATFORM_CREATE_LIMIT`，用`fanqie-book-package.js`输出人工建书包，不得伪报成功。
 - 2026-07-11: ChatGPT浏览器必须由开机启用的`chatgpt-web-browser.service`持久运行，不能以`systemd-run --collect`临时恢复；番茄租约释放后执行`systemctl start`并等待9224 CDP，恢复失败须返回失败。
-- 2026-07-12: 网页Git拆书默认由服务器 worker 处理候选下载、清洗、质量检查与 packet 回写，网页 ChatGPT 在 packet 齐备后做深度拆书。实时状态看 8090“小说模块→拆书 Packet 进度”，避免让网页 ChatGPT 高频轮询；状态应展示候选池、尝试/有效数、逐书结果、packet 路径和更新时间，新增 packet 带`packet_generated_at`。
+- 2026-07-12: 网页Git拆书默认由服务器 worker 处理候选下载、清洗、质量检查与 packet 回写，网页 ChatGPT 在 packet 齐备后做深度拆书。实时状态看 8090“小说模块→拆书 Packet 进度”，避免让网页 ChatGPT 高频轮询；状态应展示候选池、尝试/有效数、逐书结果、packet 路径和更新时间；仅`packet_git_push_status=pushed`才标记 packet 已上传 Git。
