@@ -119,9 +119,27 @@ def chapter_no_from_name(path: Path) -> int | None:
     return int(match.group(1)) if match else None
 
 
+def git_blob_sha(repo: Path, path: Path) -> str:
+    result = run_git(repo, ["hash-object", str(path.relative_to(repo))], check=False)
+    if result.returncode != 0:
+        raise ValueError(f"cannot calculate blob sha for {path}")
+    return result.stdout.strip()
+
+
+def project_layout(project_path: Path) -> dict[str, Any]:
+    path = project_path / "工程元数据" / "PROJECT_LAYOUT.json"
+    if not path.exists():
+        # Historical E2E projects have no manifest and are deliberately not
+        # eligible for new v1.1 server-write requests.
+        return {}
+    return load_json(path)
+
+
 def formal_chapter_files(project_path: Path) -> dict[int, Path]:
+    layout = project_layout(project_path)
+    formal_dir = project_path / str(layout.get("formal_dir", "formal"))
     chapters: dict[int, Path] = {}
-    for path in sorted((project_path / "formal").glob("CH*.md")):
+    for path in sorted(formal_dir.glob("*.md")):
         no = chapter_no_from_name(path)
         if no is not None:
             chapters[no] = path
@@ -148,11 +166,12 @@ def run_repo_command(repo: Path, command: list[str]) -> dict[str, Any]:
 
 
 def run_quality(repo: Path, project_path: Path, from_chapter: int, to_chapter: int) -> tuple[bool, dict[str, Any], list[Path]]:
-    audits = project_path / "audits"
+    layout = project_layout(project_path)
+    audits = project_path / str(layout.get("audit_dir", "audits"))
     audits.mkdir(parents=True, exist_ok=True)
-    formal = project_path / "formal"
     stamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    p0_output = audits / f"SERVER_WRITE_P0_GATE_CH{from_chapter:03d}_CH{to_chapter:03d}_{stamp}.json"
+    preflight_output = audits / f"SERVER_WRITE_PREFLIGHT_CH{from_chapter:03d}_CH{to_chapter:03d}_{stamp}.json"
+    p0_output = audits / f"SERVER_WRITE_METRICS_GATE_CH{from_chapter:03d}_CH{to_chapter:03d}_{stamp}.json"
     ready_output = audits / f"SERVER_WRITE_READY_GATE_CH{from_chapter:03d}_CH{to_chapter:03d}_{stamp}.json"
     summary_output = audits / f"SERVER_WRITE_QUALITY_GATE_CH{from_chapter:03d}_CH{to_chapter:03d}_{stamp}.json"
     errors: list[str] = []
@@ -170,21 +189,24 @@ def run_quality(repo: Path, project_path: Path, from_chapter: int, to_chapter: i
 
     p0_result = None
     ready_result = None
-    latest = max(files) if files else 0
+    if not errors:
+        preflight_result = run_repo_command(repo, [
+            sys.executable,
+            str(repo / "scripts" / "novel_quality_runtime" / "validate_project_production_preflight.py"),
+            "--project-dir", str(project_path.relative_to(repo)),
+            "--output-json", str(preflight_output.relative_to(repo)),
+        ])
+        if preflight_result["status"] != "ok":
+            errors.append("canonical project production preflight failed")
+
     if not errors:
         p0_result = run_repo_command(repo, [
             sys.executable,
-            str(repo / "scripts" / "p0_dialogue_visual_hard_gate_v2.py"),
-            "--formal-dir",
-            str(formal.relative_to(repo)),
-            "--reference-from",
-            "1",
-            "--reference-to",
-            str(min(latest, max(10, to_chapter))),
-            "--target-from",
-            str(from_chapter),
-            "--target-to",
-            str(to_chapter),
+            str(repo / "scripts" / "novel_quality_runtime" / "chapter_metrics_gate.py"),
+            "--project-dir", str(project_path.relative_to(repo)),
+            "--from-chapter", str(from_chapter),
+            "--to-chapter", str(to_chapter),
+            "--p0-mode", str(layout.get("p0_reference_policy", "ABSOLUTE_ONLY_BOOTSTRAP")),
             "--output-json",
             str(p0_output.relative_to(repo)),
         ])
@@ -192,21 +214,16 @@ def run_quality(repo: Path, project_path: Path, from_chapter: int, to_chapter: i
             errors.append("P0 hard gate command failed")
         else:
             p0_payload = load_json(p0_output)
-            if p0_payload.get("p0_manifest_result") != "PASS":
+            if p0_payload.get("p0_numeric_manifest_result") not in {"PASS_NUMERIC_ONLY", "MANDATORY_BODY_REVIEW"}:
                 errors.append(f"P0 hard gate result is {p0_payload.get('p0_manifest_result')}")
 
     if not errors:
         ready_result = run_repo_command(repo, [
             sys.executable,
-            str(repo / "scripts" / "validate_ready_promotion_v22.py"),
-            "--formal-dir",
-            str(formal.relative_to(repo)),
-            "--p0-manifest",
-            str(p0_output.relative_to(repo)),
-            "--from-chapter",
-            str(from_chapter),
-            "--to-chapter",
-            str(to_chapter),
+            str(repo / "scripts" / "novel_quality_runtime" / "validate_ready_promotion_holistic.py"),
+            "--project-dir", str(project_path.relative_to(repo)),
+            "--from-chapter", str(from_chapter),
+            "--to-chapter", str(to_chapter),
             "--output-json",
             str(ready_output.relative_to(repo)),
         ])
@@ -226,12 +243,14 @@ def run_quality(repo: Path, project_path: Path, from_chapter: int, to_chapter: i
         "blocking_reasons": errors,
         "chapters": chapters,
         "p0_output": str(p0_output.relative_to(repo)),
+        "preflight_output": str(preflight_output.relative_to(repo)),
         "ready_output": str(ready_output.relative_to(repo)),
+        "preflight_command": preflight_result if 'preflight_result' in locals() else None,
         "p0_command": p0_result,
         "ready_command": ready_result,
     }
     write_json(summary_output, summary)
-    paths = [path for path in [p0_output, ready_output, summary_output] if path.exists()]
+    paths = [path for path in [preflight_output, p0_output, ready_output, summary_output] if path.exists()]
     return not errors, summary, paths
 
 
@@ -239,24 +258,21 @@ def build_prompt(repo: Path, project_path: Path, request: dict[str, Any], start_
     project_rel = project_path.relative_to(repo)
     from_chapter = start_after + 1
     to_chapter = start_after + count
+    layout = project_layout(project_path)
+    formal_dir = str(layout.get("formal_dir", "formal"))
     return f"""你正在服务器 Codex 中执行网页版 2.2-LTS Git 小说流程的显式代写请求。
 
 硬规则：
 - 只使用 Git 仓库文件，不使用旧 custom GPT Action / services/novel-actions 流程。
 - 先读取 CURRENT.json、workflow/v2.2-LTS/workflow.json、PROTOCOL_INDEX.json，以及本任务需要的写作/QA bundle。
 - 读取项目：{project_rel}
-- 读取 00_PROJECT.json、handoff 中最新快照、audits 中最近质量报告、formal 中最近 1-3 章。
+- 读取 00_PROJECT.json、工程元数据/PROJECT_LAYOUT.json、handoff 中最新快照、audits 中最近质量报告和正式正文最近 1-3 章。
 - 续写范围：CH{from_chapter:03d} 到 CH{to_chapter:03d}，共 {count} 章。
 - 每章正文至少 2500 个中文汉字，目标 3000 字左右。
-- 文件写入 {project_rel}/formal/CHxxx_章节名.md，不能覆盖已存在章节。
-- 同步更新本项目必要的 handoff/audits/状态文件，保留可跨会话接力的信息。
+- 只能按 PROJECT_LAYOUT.json 写入 {project_rel}/{formal_dir}/；不能假定 formal/CHxxx 布局，也不能覆盖已存在章节。
+- 每章必须先生成候选、独立批评、实际返修、验收，再更新质量注册表、章节 ledger、提交事务和 handoff。所有正文相关门禁必须绑定正文的 exact current blob SHA；仅在 `scripts/novel_quality_runtime/validate_ready_promotion_holistic.py` 通过后才算正式就绪。
 - 必须按 2.2-LTS 强质量标准自检：背景清楚、人物动机和情绪线明确、场景动作具体、避免报告体、避免标题/句式模板化、避免 AI 味、避免与前文重复换皮。
-- 如果请求要求自动上传，只有在你认为本章范围已达上传标准时，才更新 00_PROJECT.json：
-  auto_upload_to_drafts=true
-  upload_status=ready_for_draft_upload
-  upload_range={{"from_chapter": {from_chapter}, "to_chapter": {to_chapter}}}
-  ready_evidence.qa_passed=true
-  ready_evidence.current_blob_validated=true
+- 不得自行把 00_PROJECT.json 改成 ready_for_draft_upload。上传 worker 会从 exact-blob holistic receipt、人工审核和平台建书回执派生上传就绪状态。
 - 不调用番茄上传脚本。上传由独立 upload worker 执行。
 
 请求 JSON：
@@ -320,6 +336,38 @@ def validate_request(repo: Path, request: dict[str, Any]) -> list[str]:
             errors.append("project_path must be under novels/")
         elif not (project_path / "00_PROJECT.json").exists():
             errors.append("project_path must contain 00_PROJECT.json")
+        else:
+            layout_path = project_path / "工程元数据" / "PROJECT_LAYOUT.json"
+            registry_path = project_path / "工程元数据" / "QUALITY_GATE_REGISTRY.json"
+            router_path = project_path / "00_作品总控.md"
+            project_data = load_json(project_path / "00_PROJECT.json")
+            current = load_json(repo / "CURRENT.json")
+            state = next((item for item in current.get("projects", {}).values()
+                          if isinstance(item, dict) and item.get("project_path") == project), {})
+            if request.get("schema_version") != "1.1":
+                errors.append("schema_version must be 1.1; legacy server-write requests are not executable")
+            if request.get("target_branch") != "main":
+                errors.append("target_branch must be main")
+            if run_git(repo, ["branch", "--show-current"], check=False).stdout.strip() != "main":
+                errors.append("worker repository is not on main")
+            if request.get("base_commit_sha") != run_git(repo, ["rev-parse", "HEAD"], check=False).stdout.strip():
+                errors.append("base_commit_sha is stale")
+            for label, path, field in [
+                ("workflow_router", router_path, "workflow_router_blob_sha"),
+                ("quality_registry", registry_path, "quality_gate_registry_blob_sha"),
+                ("project_layout", layout_path, "project_layout_blob_sha"),
+            ]:
+                if not path.exists() or request.get(field) != git_blob_sha(repo, path):
+                    errors.append(f"{label} pin is missing or stale")
+            manifest_path = repo / "workflow" / "v2.2-LTS" / "EFFECTIVE_RULESET.json"
+            if request.get("effective_ruleset_id") != project_data.get("effective_ruleset_id"):
+                errors.append("effective_ruleset_id is stale")
+            if request.get("effective_ruleset_manifest_sha") != git_blob_sha(repo, manifest_path):
+                errors.append("effective_ruleset_manifest_sha is stale")
+            if request.get("expected_formal_until") != project_data.get("formal_until"):
+                errors.append("expected_formal_until is stale")
+            if request.get("latest_commit_id") != state.get("latest_commit_id"):
+                errors.append("latest_commit_id is stale")
     return errors
 
 
@@ -442,22 +490,9 @@ def process_request(repo: Path, request_path: Path, execute: bool, timeout_secon
         quality_ok, quality, quality_paths = run_quality(repo, project_path, from_chapter, to_chapter)
         changed_paths.extend(quality_paths)
 
-    project_file = project_path / "00_PROJECT.json"
-    if quality_ok and request.get("auto_upload_to_drafts_after_write") is True:
-        project = load_json(project_file)
-        project["auto_upload_to_drafts"] = True
-        project["upload_status"] = "ready_for_draft_upload"
-        project["upload_range"] = {"from_chapter": from_chapter, "to_chapter": to_chapter}
-        evidence = project.get("ready_evidence") if isinstance(project.get("ready_evidence"), dict) else {}
-        evidence.update({
-            "qa_passed": True,
-            "current_blob_validated": True,
-            "server_write_quality_gate": quality.get("result") if quality else None,
-            "server_write_quality_gate_checked_at": now_iso(),
-        })
-        project["ready_evidence"] = evidence
-        write_json(project_file, project)
-        changed_paths.append(project_file)
+    # Upload readiness is not a writer-controlled boolean.  A separate upload
+    # worker derives it from canonical exact-blob receipts, human review and
+    # platform identity after this transaction is committed.
 
     request["status"] = "completed" if quality_ok and not missing else "failed"
     request["updated_at"] = now_iso()
@@ -472,7 +507,7 @@ def process_request(repo: Path, request_path: Path, execute: bool, timeout_secon
         "missing_chapters": missing,
         "quality_passed": quality_ok,
         "quality": quality,
-        "auto_upload_marked": bool(quality_ok and request.get("auto_upload_to_drafts_after_write") is True),
+        "auto_upload_marked": False,
         "codex": codex_result,
     }
     status_path = result_dir / "status.json"

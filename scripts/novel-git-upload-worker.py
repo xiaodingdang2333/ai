@@ -145,6 +145,16 @@ def chapter_number(value: Any) -> int:
     return int(match.group(1)) if match else 0
 
 
+def project_formal_dir(project_path: Path) -> Path:
+    layout_path = project_path / "工程元数据" / "PROJECT_LAYOUT.json"
+    if layout_path.exists():
+        layout = load_json(layout_path)
+        formal_dir = project_path / str(layout.get("formal_dir") or "")
+        if formal_dir.exists():
+            return formal_dir
+    return project_path / "formal"
+
+
 def title_from_web_chapter(path: Path, text: str, no: int) -> str:
     first = next((line.strip() for line in text.splitlines() if line.strip()), "")
     heading = re.match(r"^#{1,6}\s*(.+?)\s*$", first)
@@ -185,7 +195,7 @@ def validate_candidate(project_path: Path, data: dict[str, Any]) -> list[str]:
             errors.append("ready_evidence.current_blob_validated must be true")
         if evidence.get("human_review_required") is True and evidence.get("human_review_status") != "approved":
             errors.append("human review is required but not approved")
-    if not (project_path / "formal").exists():
+    if not project_formal_dir(project_path).exists():
         errors.append("formal chapter directory is required")
     return errors
 
@@ -202,7 +212,7 @@ def export_project(repo: Path, project_path: Path, data: dict[str, Any]) -> tupl
     chapter_dir.mkdir(parents=True, exist_ok=True)
 
     exported = []
-    for source in sorted((project_path / "formal").glob("*.md")):
+    for source in sorted(project_formal_dir(project_path).glob("*.md")):
         no = chapter_no_from_name(source)
         if no is None or no < from_chapter or no > to_chapter:
             continue
@@ -245,7 +255,7 @@ def run_command(command: list[str], execute: bool) -> dict[str, Any]:
 
 
 def formal_chapter_file(project_path: Path, no: int) -> Path | None:
-    matches = sorted((project_path / "formal").glob(f"CH{no:03d}_*.md"))
+    matches = sorted(path for path in project_formal_dir(project_path).glob("*.md") if chapter_no_from_name(path) == no)
     return matches[0] if len(matches) == 1 else None
 
 
@@ -294,7 +304,7 @@ def evaluate_pending_web_machine_gates(repo: Path, execute: bool) -> list[dict[s
             continue
 
         available = [
-            n for n in (chapter_no_from_name(path) for path in (project_path / "formal").glob("CH*.md"))
+            n for n in (chapter_no_from_name(path) for path in project_formal_dir(project_path).glob("*.md"))
             if n is not None
         ]
         stamp = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -309,7 +319,7 @@ def evaluate_pending_web_machine_gates(repo: Path, execute: bool) -> list[dict[s
             p0_result = run_repo_script(repo, [
                 sys.executable,
                 str(repo / "scripts" / "p0_dialogue_visual_hard_gate_v2.py"),
-                "--formal-dir", str((project_path / "formal").relative_to(repo)),
+                "--formal-dir", str(project_formal_dir(project_path).relative_to(repo)),
                 "--reference-from", "1",
                 "--reference-to", str(max(available)),
                 "--target-from", str(no),
@@ -322,7 +332,7 @@ def evaluate_pending_web_machine_gates(repo: Path, execute: bool) -> list[dict[s
             ready_result = run_repo_script(repo, [
                 sys.executable,
                 str(repo / "scripts" / "validate_ready_promotion_v22.py"),
-                "--formal-dir", str((project_path / "formal").relative_to(repo)),
+                "--formal-dir", str(project_formal_dir(project_path).relative_to(repo)),
                 "--p0-manifest", str(p0_path.relative_to(repo)),
                 "--from-chapter", str(no),
                 "--to-chapter", str(no),
@@ -541,11 +551,62 @@ def run_repo_script(repo: Path, command: list[str]) -> dict[str, Any]:
     }
 
 
+def run_canonical_upload_quality(repo: Path, project_path: Path, data: dict[str, Any], execute: bool) -> tuple[bool, dict[str, Any], list[Path]]:
+    """Revalidate upload range from the 2.2-LTS exact-blob registry.
+
+    This path deliberately does not accept writer-created booleans or invoke
+    the legacy formal/CHxxx validators.  A layout manifest opts a project in.
+    """
+    upload_range = data.get("upload_range") if isinstance(data.get("upload_range"), dict) else {}
+    start = int(upload_range.get("from_chapter") or 1)
+    end = int(upload_range.get("to_chapter") or 0)
+    out_dir = quality_output_dir(repo, project_path, execute)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    output = out_dir / f"SERVER_UPLOAD_CANONICAL_READY_CH{start:03d}_CH{end:03d}_{stamp}.json"
+    summary_path = out_dir / f"SERVER_UPLOAD_CANONICAL_GATE_CH{start:03d}_CH{end:03d}_{stamp}.json"
+    errors: list[str] = []
+    result: dict[str, Any] | None = None
+    if end < start:
+        errors.append("upload_range is missing or invalid")
+    else:
+        command = [
+            sys.executable, str(repo / "scripts" / "novel_quality_runtime" / "validate_ready_promotion_holistic.py"),
+            "--project-dir", str(project_path.relative_to(repo)),
+            "--from-chapter", str(start), "--to-chapter", str(end),
+            "--output-json", str(output.relative_to(repo) if execute else output),
+        ]
+        result = run_repo_script(repo, command) if execute else {"status": "dry_run", "command": command}
+        if execute:
+            if result["status"] != "ok" or not output.exists():
+                errors.append("canonical holistic READY validation failed to execute")
+            else:
+                payload = load_json(output)
+                if payload.get("promotion_result") != "PASS" or payload.get("ready_after_strong_qa_allowed") is not True:
+                    errors.append("canonical holistic READY validation did not pass")
+    summary = {
+        "gate": "SERVER_UPLOAD_CANONICAL_QUALITY_GATE_V1",
+        "checked_at": now_iso(),
+        "project": str(project_path.relative_to(repo)),
+        "upload_range": {"from_chapter": start, "to_chapter": end},
+        "result": "PASS" if not errors else "FAIL",
+        "blocking_reasons": errors,
+        "canonical_ready_output": str(output),
+        "canonical_command": result,
+        "trusts_free_ready_booleans": False,
+    }
+    write_json(summary_path, summary)
+    changed = [p for p in [output, summary_path] if p.exists() and p.is_relative_to(repo)]
+    return not errors, summary, changed
+
+
 def run_quality_gate(repo: Path, project_path: Path, data: dict[str, Any], execute: bool) -> tuple[bool, dict[str, Any], list[Path]]:
+    if (project_path / "工程元数据" / "PROJECT_LAYOUT.json").exists():
+        return run_canonical_upload_quality(repo, project_path, data, execute)
     upload_range = data.get("upload_range") if isinstance(data.get("upload_range"), dict) else {}
     from_chapter = int(upload_range.get("from_chapter") or 1)
     to_chapter = int(upload_range.get("to_chapter") or 999999)
-    formal = project_path / "formal"
+    formal = project_formal_dir(project_path)
     available = sorted(
         no
         for no in (chapter_no_from_name(path) for path in formal.glob("CH*.md"))

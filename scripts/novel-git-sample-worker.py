@@ -18,7 +18,7 @@ import re
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -32,12 +32,22 @@ ALLOWED_BASES = {
     "open_license",
     "official_download",
     "user_authorized_material",
-    "automation_allowed",
 }
+RUNNING_LEASE_SECONDS = 15 * 60
 
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+
+
+def running_lease_expired(request: dict[str, Any]) -> bool:
+    value = request.get("lease_expires_at")
+    if not isinstance(value, str):
+        return True
+    try:
+        return datetime.fromisoformat(value).astimezone() <= datetime.now(timezone.utc).astimezone()
+    except ValueError:
+        return True
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -665,13 +675,17 @@ def process_requests(
     for request_path in sorted(pending.glob("*.json"))[:limit]:
         try:
             request = load_json(request_path)
-            if request.get("status") != "pending" and not (
-                request.get("status") == "failed" and request.get("retry_requested") is True
-            ):
+            status = request.get("status")
+            retrying_stale_lease = status == "running" and running_lease_expired(request)
+            if status != "pending" and not (status == "failed" and request.get("retry_requested") is True) and not retrying_stale_lease:
                 continue
+            if retrying_stale_lease:
+                request["status"] = "pending"
+                request["recovered_from_expired_lease_at"] = now_iso()
             if execute:
                 request["status"] = "running"
                 request["updated_at"] = now_iso()
+                request["lease_expires_at"] = (datetime.now(timezone.utc).astimezone() + timedelta(seconds=RUNNING_LEASE_SECONDS)).isoformat(timespec="seconds")
                 running = running_status_for_request(request, request_path, repo)
                 status_path = repo / "sample-results" / running["request_id"] / "status.json"
                 write_json(request_path, request)
@@ -697,6 +711,7 @@ def process_requests(
             if execute:
                 request["status"] = "completed" if result["status"] == "completed" else result["status"]
                 request["updated_at"] = now_iso()
+                request.pop("lease_expires_at", None)
                 extra_paths = [Path(extra) for extra in result.pop("_extra_changed_paths", [])]
                 write_json(request_path, request)
                 status_path = repo / "sample-results" / result["request_id"] / "status.json"
@@ -714,6 +729,23 @@ def process_requests(
                 "dry_run": not execute,
             })
         except Exception as exc:  # noqa: BLE001 - worker should continue other requests.
+            if execute and 'request' in locals() and 'request_path' in locals():
+                request_id = str(request.get("request_id") or request_path.stem)
+                request["status"] = "failed"
+                request["updated_at"] = now_iso()
+                request["worker_error"] = str(exc)[:2000]
+                request.pop("lease_expires_at", None)
+                status_path = repo / "sample-results" / request_id / "status.json"
+                write_json(request_path, request)
+                write_json(status_path, {
+                    "schema_version": "1.1",
+                    "request_id": request_id,
+                    "status": "failed",
+                    "updated_at": now_iso(),
+                    "failure_reason": "WORKER_EXCEPTION",
+                    "error": str(exc)[:2000],
+                })
+                changed_paths.extend([request_path, status_path])
             errors.append({"path": str(request_path), "error": str(exc)})
     git_result = None
     if execute and git_commit:
