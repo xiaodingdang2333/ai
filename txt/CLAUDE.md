@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 2026-07-12 小说生产 Canonical 约束
+
+- 小说主线只使用 `/home/admin/chatgpt-novel-production-system` 最新 main 的 2.2-LTS Git 工作流；旧 Action 流程废弃。
+- 以 `CURRENT.json` → `workflow/v2.2-LTS/EFFECTIVE_RULESET.json` 为入口；正文、代写、上传按项目 `PROJECT_LAYOUT.json`，不可硬编码 `formal/CHxxx`。
+- 上传只接受 exact-current-blob quality registry + holistic READY receipt，不能信任自由 boolean。新版服务器代写请求 schema 1.1 必须 pin main、base commit、路由、规则集、质量注册表和布局哈希。
+
 ## Qimao Submission Rule Trigger
 
 - When the user asks to write, revise, package, or evaluate fiction for 七猫投稿/七猫内投, first read `F:\ai\memory\qimao-submission-rules.md`. Apply its ranking-derived rules: title must visibly promise the genre hook; first chapter starts inside a crisis, not a setting lecture; first 100 words need curiosity, first 300 words need emotion/conflict/gimmick; 女主 must quickly gain a visible 反制筹码; each chapter needs an immediate 局 and a chapter-end new 危机.

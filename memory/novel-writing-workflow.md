@@ -45,3 +45,9 @@
 - 【旧Action流程规则已废弃】没有`book_id`时从服务器模糊查找、旧稿修订批次、逐章暂存和QA晋级等规则只适用于已废弃的 `novel-actions` 流程；当前不得用它作为网页写作主线。旧稿续写/修订应优先通过 Git 仓库项目文件和本地正式正文定位。
 
 具体阈值、字段和操作命令以对应技能及`workflow-preferences.md`的最新版本为准，不得用聊天记忆覆盖仓库规则。
+
+## 2026-07-12 Canonical 质量与 worker 约束
+
+- 2.2-LTS 的实际有效规则入口是 `/home/admin/chatgpt-novel-production-system/main` 的 `CURRENT.json` → `workflow/v2.2-LTS/EFFECTIVE_RULESET.json`。写作、代写、上传必须以 `PROJECT_LAYOUT.json` 解析正文目录，禁止再硬编码 `formal/CHxxx`。
+- 正文可晋升/上传只能由 exact-current-blob 的 quality registry 和 holistic READY receipt 派生；不得信任自由填写的 `qa_passed`、`current_blob_validated` 或 Markdown 中的“通过”。发布建书回执缺失只阻止上传，不得阻止正文修订。
+- 新版服务器代写请求必须使用 schema `1.1`，并 pin `main`、base commit、路由、正式章数、规则集、质量注册表和布局哈希；任一 pin 过期即拒绝执行。样本 worker 的 `automation_allowed` 仅是权限布尔值，绝不是合法来源依据；任务 `running` 采用 15 分钟租约，异常必须回写终态，避免永久卡住。
