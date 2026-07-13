@@ -47,3 +47,4 @@
 - 2026-07-13: Git 小说 worker 不得直接运行在用户会修改、且可能落后远端的普通 clone。生产 worker 使用独立的`/home/admin/chatgpt-novel-production-system-runtime`工作树；每次样本、代写、草稿上传前运行`novel-git-sync.py`，只允许干净、未领先的工作树执行`fetch + ff-only`。有未提交改动、未推送提交或分叉时必须失败，不得`reset`、强推或覆盖原目录。
 - 2026-07-13: systemd 的`Type=oneshot` Git worker 若使用`OnUnitActiveSec`，本机实测只会触发一次，`NextElapse`变为`infinity`。轮询、样本、代写、上传 timer 必须使用`OnUnitInactiveSec`，以 worker 完成时刻重新计时；修改后检查`systemctl list-timers`确实显示下一次触发时间。
 - 2026-07-13: poller、样本、代写和上传若同时访问同一 Git worktree，会抢占`index.lock`并让安全同步误报失败。四类 service 必须经`novel-git-worker-runner.py`持有同一把非阻塞`flock`，锁占用时返回`locked`并由下个 timer 周期重试。Python 质量脚本生成的`__pycache__`也会使安全同步误判脏树，因此服务设`PYTHONDONTWRITEBYTECODE=1`，网页仓库同时忽略该缓存。
+- 2026-07-13: 已废弃的`novel-actions.service`（8091旧网页 Action 后端）已停止并禁用；新 Git worker 和8090页面不依赖它。保留文件与历史状态即可，未经用户明确要求不得重新启用，避免旧RPC流程被误调用并占用低配服务器资源。

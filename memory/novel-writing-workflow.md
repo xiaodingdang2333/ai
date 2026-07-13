@@ -8,6 +8,8 @@
 
 当前网页版小说生产的权威流程是 `/home/admin/chatgpt-novel-production-system` 最新 `main` 中的 2.2-LTS Git 仓库工作流：网页版 ChatGPT 按仓库协议写作、审查、修订并上传 Git；服务器/Codex 后续若要吸收能力，必须围绕该 Git 仓库的 `CURRENT.json`、active ruleset、章节产物、current-blob P0 evidence、handoff snapshot、sample registry 等可审计文件重新设计，不得复活旧 Action 流程。
 
+`novel-actions.service`已于2026-07-13停止并取消开机自启；旧文件与历史状态仅作追溯，不得重新启用该服务或将任何新流程接回8091 Action接口，除非用户明确要求迁移或取证。
+
 ## 2026-07-09 Git 驱动的网页/服务器分工
 
 - 主要写作默认由网页版 ChatGPT 执行，以节约服务器 Codex token；网页版必须使用 `/home/admin/chatgpt-novel-production-system` 的 2.2-LTS Git 工作流和同一套质量标准。

@@ -228,3 +228,4 @@ When writing new chapters, create or verify the matching `大纲/细纲_第XXX�
 - 2026-07-12: 网页Git拆书默认由服务器 worker 处理候选下载、清洗、质量检查与 packet 回写，网页 ChatGPT 在 packet 齐备后做深度拆书。实时状态看 8090“小说模块→拆书 Packet 进度”，仅展示按更新时间最新的 3 次拆书任务，避免让网页 ChatGPT 高频轮询；状态应展示候选池、尝试/有效数、逐书结果、packet 路径和更新时间；仅`packet_git_push_status=pushed`才标记 packet 已上传 Git。
 - 2026-07-13: Git 小说生产 worker 使用独立的`/home/admin/chatgpt-novel-production-system-runtime`工作树，不能直接使用用户可能修改且落后的普通 clone。样本、服务器代写、草稿上传前必须调用`novel-git-sync.py`；它只允许干净、未领先工作树做`fetch + ff-only`，禁止 reset、强推或覆盖本地工作。systemd 的 oneshot worker timer 必须使用`OnUnitInactiveSec`，否则可能只触发一次并显示`NextElapse=infinity`。
 - 2026-07-13: poller、样本、代写、上传必须通过`novel-git-worker-runner.py`共享非阻塞运行锁，避免并发 Git `index.lock`冲突；锁占用即跳过本轮、等下个 timer。服务设`PYTHONDONTWRITEBYTECODE=1`且网页仓库忽略`__pycache__/`，否则质量脚本缓存会把 runtime 误判为脏树。
+- 2026-07-13: 旧`novel-actions.service`（8091网页 Action 后端）已停止并禁用；新Git流程和8090页面不依赖它。仅保留历史文件，未经用户明确要求不得重新启用。
