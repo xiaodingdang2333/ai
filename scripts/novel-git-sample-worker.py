@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 
-DEFAULT_REPO = Path("/home/admin/chatgpt-novel-production-system")
+DEFAULT_REPO = Path("/home/admin/chatgpt-novel-production-system-runtime")
 SONOVEL_CLIENT = Path("/home/admin/ai/scripts/sonovel-client.js")
 CODEX_BIN = Path("/root/.nvm/versions/node/v22.22.3/bin/codex")
 

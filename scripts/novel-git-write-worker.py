@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 
-DEFAULT_REPO = Path("/home/admin/chatgpt-novel-production-system")
+DEFAULT_REPO = Path("/home/admin/chatgpt-novel-production-system-runtime")
 CODEX_BIN = Path("/root/.nvm/versions/node/v22.22.3/bin/codex")
 LOCK_PATH = Path("/tmp/novel-git-write-worker.lock")
 

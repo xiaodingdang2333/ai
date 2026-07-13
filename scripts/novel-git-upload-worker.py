@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 
-DEFAULT_REPO = Path("/home/admin/chatgpt-novel-production-system")
+DEFAULT_REPO = Path("/home/admin/chatgpt-novel-production-system-runtime")
 EXPORT_ROOT = Path("/home/admin/ai/output/novel-git-upload")
 QUALITY_GATE_ROOT = EXPORT_ROOT / "quality-gates"
 FANQIE_UPLOAD = Path("/home/admin/ai/codex/skills/fanqie-upload/scripts/fanqie-upload.js")

@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 
-DEFAULT_REPO = Path("/home/admin/chatgpt-novel-production-system")
+DEFAULT_REPO = Path("/home/admin/chatgpt-novel-production-system-runtime")
 
 ACCOUNT_AUTHORS = {
     "account-a": "西大水怪",

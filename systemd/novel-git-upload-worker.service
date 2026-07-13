@@ -5,5 +5,6 @@ Description=Upload Git-ready ChatGPT novels to Fanqie drafts
 Type=oneshot
 Environment=HOME=/root
 WorkingDirectory=/home/admin/ai
-ExecStart=/usr/bin/python3 /home/admin/ai/scripts/novel-git-upload-worker.py --repo /home/admin/chatgpt-novel-production-system --execute --git-commit --git-push --limit 1 --json
-ExecStopPost=/usr/bin/chown -R admin:admin /home/admin/chatgpt-novel-production-system
+ExecStartPre=/usr/bin/python3 /home/admin/ai/scripts/novel-git-sync.py --repo /home/admin/chatgpt-novel-production-system-runtime --json
+ExecStart=/usr/bin/python3 /home/admin/ai/scripts/novel-git-upload-worker.py --repo /home/admin/chatgpt-novel-production-system-runtime --execute --git-commit --git-push --limit 1 --json
+ExecStopPost=/usr/bin/chown -R admin:admin /home/admin/chatgpt-novel-production-system-runtime
