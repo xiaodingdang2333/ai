@@ -21,6 +21,8 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.head_ref }}
+      - name: Repair deterministic legacy chapter headers
+        run: python3 quality_runtime/fix_legacy_chapter_headers.py
       - name: Prepare exact-current-blob formal view
         run: |
           python3 quality_runtime/prepare_legacy_gate.py \
@@ -52,12 +54,13 @@ jobs:
             'mode': 'DIAGNOSTIC_ONLY_NO_READY_PROMOTION'
           }, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
           PY
-      - name: Commit diagnostic artifacts
+      - name: Commit repaired chapters and diagnostic artifacts
         run: |
           git config user.name 'novel-quality-bot'
           git config user.email 'novel-quality-bot@users.noreply.github.com'
-          git add 'txt/重生六岁，我带空间抢回军区大院/追踪/机器门禁/'
+          git add 'txt/重生六岁，我带空间抢回军区大院/正文/' \
+                  'txt/重生六岁，我带空间抢回军区大院/追踪/机器门禁/'
           if ! git diff --cached --quiet; then
-            git commit -m '生成第001-074章机器门禁诊断 [skip ci]'
+            git commit -m '修复章节标题并生成第001-074章机器门禁诊断 [skip ci]'
             git push origin HEAD:${{ github.head_ref }}
           fi
