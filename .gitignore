@@ -21,6 +21,7 @@ txt/output/imagegen/
 # browser / CDP runtime profiles
 .fanqie-cdp-profile/
 .fanqie-profiles/
+.chatgpt-web-profile/
 
 # dependencies
 node_modules/
