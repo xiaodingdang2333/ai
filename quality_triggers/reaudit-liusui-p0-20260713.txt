@@ -1,1 +1,2 @@
 Trigger exact-current-blob diagnostic for CH001-CH074.
+PR synchronize run: 2026-07-13.
