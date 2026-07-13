@@ -1,0 +1,6 @@
+{
+  "workflow": "Legacy Novel Quality Diagnostic",
+  "commit": "1eb6841218a6ad76b6c118774470188b90b32ae7",
+  "p0_step_outcome": "failure",
+  "mode": "DIAGNOSTIC_ONLY_NO_READY_PROMOTION"
+}
