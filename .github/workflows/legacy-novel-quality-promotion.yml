@@ -1,0 +1,161 @@
+name: Legacy Novel Quality Promotion
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/legacy-novel-quality-promotion.yml'
+      - 'quality_runtime/**'
+      - 'scripts/p0_dialogue_visual_hard_gate_v2.py'
+      - 'scripts/validate_ready_promotion_v22.py'
+      - 'quality_triggers/reaudit-liusui-ready-*'
+      - 'txt/重生六岁，我带空间抢回军区大院/追踪/机器门禁/CHAPTER_LENGTH_CONTRACT.json'
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.head_ref }}
+
+      - name: Repair deterministic legacy chapter headers
+        run: python3 quality_runtime/fix_legacy_chapter_headers.py
+
+      - name: Prepare exact-current-blob formal view
+        run: |
+          python3 quality_runtime/prepare_legacy_gate.py \
+            --book-dir 'txt/重生六岁，我带空间抢回军区大院' \
+            --from-chapter 1 --to-chapter 74 \
+            --formal-out '.quality_runtime/formal' \
+            --output-json 'txt/重生六岁，我带空间抢回军区大院/追踪/机器门禁/DIAGNOSTIC_CH001_CH074.json'
+
+      - name: Run canonical P0 gate
+        run: |
+          python3 scripts/p0_dialogue_visual_hard_gate_v2.py \
+            --formal-dir '.quality_runtime/formal' \
+            --reference-from 1 --reference-to 10 \
+            --target-from 1 --target-to 74 \
+            --output-json 'txt/重生六岁，我带空间抢回军区大院/追踪/机器门禁/P0_DIALOGUE_VISUAL_CH001_CH074.json'
+
+      - name: Run locked chapter-length contract gate
+        run: |
+          python3 quality_runtime/validate_chapter_length_contract.py \
+            --formal-dir '.quality_runtime/formal' \
+            --contract 'txt/重生六岁，我带空间抢回军区大院/追踪/机器门禁/CHAPTER_LENGTH_CONTRACT.json' \
+            --from-chapter 1 --to-chapter 74 \
+            --output-json 'txt/重生六岁，我带空间抢回军区大院/追踪/机器门禁/CHAPTER_LENGTH_GATE_CH001_CH074.json'
+
+      - name: Validate exact-current-blob READY promotion
+        run: |
+          python3 scripts/validate_ready_promotion_v22.py \
+            --formal-dir '.quality_runtime/formal' \
+            --p0-manifest 'txt/重生六岁，我带空间抢回军区大院/追踪/机器门禁/P0_DIALOGUE_VISUAL_CH001_CH074.json' \
+            --from-chapter 1 --to-chapter 74 \
+            --output-json 'txt/重生六岁，我带空间抢回军区大院/追踪/机器门禁/READY_PROMOTION_CH001_CH074.json'
+
+      - name: Build final blob and platform READY manifests
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, subprocess
+          from pathlib import Path
+
+          root = Path.cwd()
+          gate = root / 'txt/重生六岁，我带空间抢回军区大院/追踪/机器门禁'
+          p0 = json.loads((gate / 'P0_DIALOGUE_VISUAL_CH001_CH074.json').read_text(encoding='utf-8'))
+          length = json.loads((gate / 'CHAPTER_LENGTH_GATE_CH001_CH074.json').read_text(encoding='utf-8'))
+          ready = json.loads((gate / 'READY_PROMOTION_CH001_CH074.json').read_text(encoding='utf-8'))
+          diagnostic = json.loads((gate / 'DIAGNOSTIC_CH001_CH074.json').read_text(encoding='utf-8'))
+
+          if p0.get('p0_manifest_result') != 'PASS':
+              raise SystemExit('P0 not PASS')
+          if length.get('length_gate_result') != 'PASS':
+              raise SystemExit('length gate not PASS')
+          if ready.get('promotion_result') != 'PASS':
+              raise SystemExit('READY promotion not PASS')
+          if diagnostic.get('structural_result') != 'PASS':
+              raise SystemExit('structural diagnostic not PASS')
+
+          p0_by = {r['chapter']: r['blob_sha'] for r in p0['chapters']}
+          len_by = {r['chapter']: r['blob_sha'] for r in length['chapters']}
+          ready_by = {r['chapter']: r['blob_sha'] for r in ready['current_blobs']}
+          mismatches = []
+          for n in range(1, 75):
+              ch = f'CH{n:03d}'
+              vals = [p0_by.get(ch), len_by.get(ch), ready_by.get(ch)]
+              if None in vals or len(set(vals)) != 1:
+                  mismatches.append({'chapter': ch, 'p0': vals[0], 'length': vals[1], 'ready': vals[2]})
+          if mismatches:
+              raise SystemExit(f'cross-manifest blob mismatch: {mismatches}')
+
+          source_commit = subprocess.check_output(['git','rev-parse','HEAD'], text=True).strip()
+          final_blob = {
+              'gate': 'FINAL_CURRENT_BLOB_SET_VALIDATION',
+              'source_commit': source_commit,
+              'scope': {'from': 1, 'to': 74},
+              'chapter_blobs': [{'chapter': f'CH{n:03d}', 'blob_sha': p0_by[f"CH{n:03d}"]} for n in range(1,75)],
+              'p0_manifest_blob_sha': subprocess.check_output(['git','hash-object', str((gate/'P0_DIALOGUE_VISUAL_CH001_CH074.json').relative_to(root))], text=True).strip(),
+              'length_manifest_blob_sha': subprocess.check_output(['git','hash-object', str((gate/'CHAPTER_LENGTH_GATE_CH001_CH074.json').relative_to(root))], text=True).strip(),
+              'ready_manifest_blob_sha': subprocess.check_output(['git','hash-object', str((gate/'READY_PROMOTION_CH001_CH074.json').relative_to(root))], text=True).strip(),
+              'mismatches': [],
+              'final_blob_validation_result': 'PASS'
+          }
+          (gate/'FINAL_BLOB_VALIDATION_CH001_CH074.json').write_text(json.dumps(final_blob, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
+
+          audit_path = root / 'txt/重生六岁，我带空间抢回军区大院/追踪/旧稿新流程复审_第001-074章_20260713_FINAL.md'
+          platform = {
+              'gate': 'PLATFORM_READY_CH001_CH074',
+              'book_title': '重生六岁，我带空间抢回军区大院',
+              'author': '桃枝醒醒',
+              'fanqie_book_id': '7654615479075490878',
+              'range': {'from': 1, 'to': 74},
+              'semantic_audit_path': str(audit_path.relative_to(root)),
+              'semantic_audit_blob_sha': subprocess.check_output(['git','hash-object', str(audit_path.relative_to(root))], text=True).strip(),
+              'p0_result': 'PASS',
+              'length_gate_result': 'PASS',
+              'structural_result': 'PASS',
+              'current_blob_validation_result': 'PASS',
+              'ready_promotion_result': 'PASS',
+              'auto_upload_to_drafts': False,
+              'draft_upload_triggered': False,
+              'publication_triggered': False,
+              'platform_ready_result': 'PASS'
+          }
+          (gate/'PLATFORM_READY_CH001_CH074.json').write_text(json.dumps(platform, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
+
+          binding_path = gate/'PROJECT_UPLOAD_BINDING.json'
+          binding = json.loads(binding_path.read_text(encoding='utf-8'))
+          binding['upload_status'] = 'ready_for_draft_upload'
+          binding['auto_upload_to_drafts'] = False
+          binding['ready_evidence'] = {
+              'qa_passed': True,
+              'current_blob_validated': True,
+              'human_review_required': False,
+              'human_review_status': 'not_required',
+              'p0_manifest': str((gate/'P0_DIALOGUE_VISUAL_CH001_CH074.json').relative_to(root)),
+              'length_manifest': str((gate/'CHAPTER_LENGTH_GATE_CH001_CH074.json').relative_to(root)),
+              'ready_manifest': str((gate/'READY_PROMOTION_CH001_CH074.json').relative_to(root)),
+              'final_blob_manifest': str((gate/'FINAL_BLOB_VALIDATION_CH001_CH074.json').relative_to(root)),
+              'platform_ready_manifest': str((gate/'PLATFORM_READY_CH001_CH074.json').relative_to(root))
+          }
+          binding_path.write_text(json.dumps(binding, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
+          PY
+
+      - name: Commit machine evidence
+        run: |
+          git config user.name 'novel-quality-bot'
+          git config user.email 'novel-quality-bot@users.noreply.github.com'
+          git add 'txt/重生六岁，我带空间抢回军区大院/正文/' \
+                  'txt/重生六岁，我带空间抢回军区大院/追踪/机器门禁/'
+          if ! git diff --cached --quiet; then
+            git commit -m '完成第001-074章P0长度Blob与平台READY门禁 [skip ci]'
+            git push origin HEAD:${{ github.head_ref }}
+          fi
