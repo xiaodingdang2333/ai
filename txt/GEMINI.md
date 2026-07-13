@@ -13,6 +13,7 @@ This file mirrors the durable workspace instructions and shared memory needed by
 - 新书在 CH001 前、旧书在下一次写作/修订/上传前，必须有项目级 `工程元数据/CREATIVE_CRAFT_PROFILE.json` 与审计登记表；规则在 `/home/admin/chatgpt-novel-production-system/workflow/creative-craft/CREATIVE_CRAFT_EXECUTION_POLICY.md`。只使用功能性创作方法，禁止复制外部作品正文、专名、事件或表达。
 - 每个启用章节合同固定写 `reader_promise`、`emotional_start`、`emotional_turn`、`relationship_beat`、`genre_delivery`、`scene_texture`、`anti_repeat_delta`；按 architecture → character_relationship → prose_emotion → continuity 顺序审稿，回执和退化扫描均绑定 exact blob。
 - HARD 阻断，HIGH 必须实际返修重审，MEDIUM/LOW 记录并在 5/10 章及 ARC 审计处理。项目预检、holistic READY、服务器代写和上传复验都检查此层。自动校验不能证明文学质量；试点质量结论需要用户/指定读者盲评。
+- 若 Strong QA/P0/READY 都显示 PASS 但 holistic READY 仍报 `surface_gate` 或 ruleset 缺失，先对当前 blob 运行 `backfill_exact_blob_registry_fields.py` dry-run；仅在所有既有证据逐项精确匹配时才允许回填注册表，绝不改正文或伪造状态。
 
 ## Qimao Submission Rule Trigger
 
