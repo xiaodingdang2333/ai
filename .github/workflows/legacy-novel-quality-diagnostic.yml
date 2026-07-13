@@ -9,8 +9,19 @@ on:
       - 'scripts/p0_dialogue_visual_hard_gate_v2.py'
       - 'scripts/validate_ready_promotion_v22.py'
       - 'quality_triggers/**'
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/legacy-novel-quality-diagnostic.yml'
+      - 'quality_runtime/**'
+      - 'scripts/p0_dialogue_visual_hard_gate_v2.py'
+      - 'scripts/validate_ready_promotion_v22.py'
+      - 'quality_triggers/**'
 permissions:
   contents: write
+  pull-requests: read
 jobs:
   diagnostic:
     runs-on: ubuntu-latest
@@ -18,6 +29,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.head_ref || github.ref_name }}
       - name: Prepare exact-current-blob formal view
         run: |
           python3 quality_runtime/prepare_legacy_gate.py \
@@ -44,6 +56,7 @@ jobs:
           p.write_text(json.dumps({
             'workflow': 'Legacy Novel Quality Diagnostic',
             'commit': os.environ['GITHUB_SHA'],
+            'source_branch': os.environ.get('GITHUB_HEAD_REF') or os.environ.get('GITHUB_REF_NAME'),
             'p0_step_outcome': '${{ steps.p0.outcome }}',
             'mode': 'DIAGNOSTIC_ONLY_NO_READY_PROMOTION'
           }, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
@@ -55,5 +68,5 @@ jobs:
           git add 'txt/重生六岁，我带空间抢回军区大院/追踪/机器门禁/'
           if ! git diff --cached --quiet; then
             git commit -m '生成第001-074章机器门禁诊断 [skip ci]'
-            git push
+            git push origin HEAD:${{ github.head_ref || github.ref_name }}
           fi
