@@ -55,7 +55,7 @@
       "get": {
         "operationId": "getNovelJob",
         "summary": "长轮询查询后台任务进度和小型结果摘要",
-        "description": "如果返回queued或running，必须在同一轮回复中再次调用本操作并传wait_seconds=35，直到任务进入completed、failed或needs_review终态。市场研究终态只返回数量、书名、跳过原因和样本序号，不返回正文。",
+        "description": "如果返回queued或running，无论已查询多少次，都必须在同一轮回复中再次调用并传wait_seconds=35，直到completed、failed或needs_review终态；禁止结束回复等待用户催促。上传任务运行中会返回逐章verified_chapters进度。市场研究终态只返回摘要。",
         "parameters": [
           {"name": "job_id", "in": "path", "required": true, "schema": {"type": "string"}},
           {"name": "wait_seconds", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 0, "maximum": 35, "default": 35}}
@@ -157,6 +157,17 @@
       }
     },
     "/v1/books": {
+      "get": {
+        "operationId": "findNovelProject",
+        "summary": "按不完整书名模糊查找已有小说项目",
+        "description": "没有book_id、会话中断或用户只提供书名时必须先调用。自动忽略书名号、空格和标点；唯一高置信结果直接返回selected.book_id，多结果时只让用户按完整书名选择，禁止索要book_id。",
+        "x-openai-isConsequential": false,
+        "parameters": [
+          {"name": "title", "in": "query", "required": true, "schema": {"type": "string", "minLength": 2}, "description": "用户记得的完整或部分书名"},
+          {"name": "account", "in": "query", "required": false, "schema": {"type": "string"}, "description": "可传account-a/account-b/account-c或作者笔名以提高准确度"}
+        ],
+        "responses": {"200": {"description": "唯一解析结果selected，或最多10个候选书名、作者、阶段和续写进度"}}
+      },
       "post": {
         "operationId": "createNovelProject",
         "summary": "创建新书项目；仅在同书名、同账号、同选题时恢复原book_id",
@@ -176,6 +187,22 @@
           }}}
         },
         "responses": {"200": {"description": "新建或恢复后的book_id、目录、阶段、版本和resumed标记"}}
+      }
+    },
+    "/v1/books/import-existing": {
+      "post": {
+        "operationId": "importExistingNovelProject",
+        "summary": "把服务器已有但未登记的本地小说导入工作台",
+        "description": "findNovelProject返回selected.registration_required=true时立即调用。读取本地正文、作品信息和追踪文件，校验章节连续及最低字数后登记book_id；禁止要求用户重新上传服务器已有文件。",
+        "x-openai-isConsequential": false,
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {
+          "type": "object", "required": ["title"],
+          "properties": {
+            "title": {"type": "string", "description": "findNovelProject返回的完整本地目录书名"},
+            "account": {"type": "string", "enum": ["account-a", "account-b", "account-c"], "description": "通常省略，由作品信息中的作者笔名自动识别"}
+          }
+        }}}},
+        "responses": {"200": {"description": "登记后的book_id、已导入章节数和下一章号"}, "409": {"description": "账号冲突、章节不连续或字数不合格"}}
       }
     },
     "/v1/books/{book_id}/ideation-rebind": {
@@ -260,6 +287,181 @@
           }
         }}}},
         "responses": {"200": {"description": "已保存的写作批次设置"}}
+      }
+    },
+    "/v1/books/{book_id}/writing-resume": {
+      "get": {
+        "operationId": "getNovelWritingResume",
+        "summary": "读取长篇写作的权威检查点和唯一下一步动作",
+        "description": "网页会话开始、刷新、中断后收到继续指令，或每章提交后必须调用。服务器会修复未完整落盘的检查点文件，并返回next_action。聊天缓存不得覆盖服务器revision。",
+        "x-openai-isConsequential": false,
+        "parameters": [{"name": "book_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "批次进度、QA状态、最后检查点及write/revise/qa/upload下一步"}}
+      }
+    },
+    "/v1/books/{book_id}/writing-contracts": {
+      "post": {
+        "operationId": "createNovelWritingContract",
+        "summary": "为接下来1到4章建立强制创作合同",
+        "description": "恢复快照返回plan_segment或plan_revision_segment时必须调用。合同逐章固定主角目标、阻力、关键选择、代价、状态变化、情绪回报、类型承诺、冲突引擎、结尾钩子和结构指纹；未建合同不能保存正文。",
+        "x-openai-isConsequential": false,
+        "parameters": [{"name": "book_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {
+          "type": "object", "required": ["from", "to", "contract"],
+          "properties": {
+            "from": {"type": "integer", "minimum": 1}, "to": {"type": "integer", "minimum": 1},
+            "revision_batch_id": {"type": "string", "description": "历史章节修订时传恢复快照中的批次ID"},
+            "contract": {"type": "object", "required": ["protagonist", "genre_promises", "segment_goal", "prohibited_loops", "prior_segment_comparison", "chapter_plans"],
+              "properties": {
+                "protagonist": {"type": "string"},
+                "genre_promises": {"type": "array", "minItems": 3, "items": {"type": "string"}},
+                "segment_goal": {"type": "string"},
+                "prohibited_loops": {"type": "array", "minItems": 3, "items": {"type": "string"}},
+                "prior_segment_comparison": {"type": "string"},
+                "chapter_plans": {"type": "array", "minItems": 1, "maxItems": 4, "items": {"type": "object",
+                  "required": ["chapter_no", "title_intent", "protagonist_goal", "obstacle", "consequential_choice", "cost", "state_change", "emotional_payoff", "type_promise", "conflict_engine", "ending_hook", "structural_fingerprint"],
+                  "properties": {
+                    "chapter_no": {"type": "integer"}, "title_intent": {"type": "string"},
+                    "protagonist_goal": {"type": "string"}, "obstacle": {"type": "string"},
+                    "consequential_choice": {"type": "string"}, "cost": {"type": "string"},
+                    "state_change": {"type": "string"}, "emotional_payoff": {"type": "string"},
+                    "type_promise": {"type": "string"}, "conflict_engine": {"type": "string"},
+                    "ending_hook": {"type": "string"}, "structural_fingerprint": {"type": "string"}
+                  }}
+                }
+              }}
+          }
+        }}}},
+        "responses": {"200": {"description": "合同ID及逐章计划"}, "409": {"description": "与最近章节结构重复或批次状态不允许"}}
+      }
+    },
+    "/v1/books/{book_id}/writing-contracts/{contract_id}": {
+      "get": {
+        "operationId": "getNovelWritingContract",
+        "summary": "读取创作合同及跨章审稿状态",
+        "x-openai-isConsequential": false,
+        "parameters": [
+          {"name": "book_id", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "contract_id", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "responses": {"200": {"description": "合同、逐章计划和审稿结论"}}
+      }
+    },
+    "/v1/books/{book_id}/writing-contracts/{contract_id}/review": {
+      "post": {
+        "operationId": "reviewNovelWritingSegment",
+        "summary": "对1到4章执行强制跨章审稿",
+        "description": "合同内全部章节逐章QA通过后调用。任一审稿标志不得虚报；服务器还会检查主角能动性和解释性报告句密度，不通过会要求返修本段。",
+        "x-openai-isConsequential": false,
+        "parameters": [
+          {"name": "book_id", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "contract_id", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {
+          "type": "object", "required": ["review"], "properties": {"review": {"type": "object",
+            "required": ["protagonist_agency_passed", "genre_promise_passed", "emotional_arc_passed", "structure_diversity_passed", "title_variety_passed", "exposition_density_passed", "tracking_integrity_passed", "chapter_findings", "cross_chapter_notes"],
+            "properties": {
+              "protagonist_agency_passed": {"type": "boolean"}, "genre_promise_passed": {"type": "boolean"},
+              "emotional_arc_passed": {"type": "boolean"}, "structure_diversity_passed": {"type": "boolean"},
+              "title_variety_passed": {"type": "boolean"}, "exposition_density_passed": {"type": "boolean"},
+              "tracking_integrity_passed": {"type": "boolean"},
+              "chapter_findings": {"type": "array", "items": {"type": "object", "required": ["chapter_no", "finding"], "properties": {"chapter_no": {"type": "integer"}, "finding": {"type": "string"}}}},
+              "cross_chapter_notes": {"type": "string", "minLength": 80}
+            }}}
+        }}}},
+        "responses": {"200": {"description": "passed及continue/revise_segment下一步"}}
+      }
+    },
+    "/v1/books/{book_id}/revision-batches": {
+      "get": {
+        "operationId": "getNovelRevisionResume",
+        "summary": "恢复当前旧章节修订批次",
+        "description": "修订中断或用户说继续修改时调用，返回原章/临时稿、逐章QA状态及唯一下一步。",
+        "x-openai-isConsequential": false,
+        "parameters": [{"name": "book_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "修订检查点、原章节和下一步"}}
+      },
+      "post": {
+        "operationId": "configureNovelRevision",
+        "summary": "配置单章、多章、连续范围或整本修订",
+        "description": "开始修改旧小说前调用。all_chapters、chapter_numbers、from_chapter三种选择只能使用一种；mode=auto表示全部QA通过后自动覆盖本地正式正文，review表示等待用户检阅。不会自动改番茄平台草稿。",
+        "x-openai-isConsequential": false,
+        "parameters": [{"name": "book_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {
+          "type": "object", "required": ["mode"],
+          "properties": {
+            "all_chapters": {"type": "boolean"},
+            "chapter_numbers": {"type": "array", "minItems": 1, "maxItems": 500, "items": {"type": "integer", "minimum": 1}},
+            "from_chapter": {"type": "integer", "minimum": 1}, "to_chapter": {"type": "integer", "minimum": 1},
+            "mode": {"type": "string", "enum": ["auto", "review"]}
+          }
+        }}}},
+        "responses": {"200": {"description": "修订批次、第一章原文和下一步"}, "409": {"description": "存在未完成续写或待QA临时稿"}}
+      }
+    },
+    "/v1/books/{book_id}/revision-batches/{revision_batch_id}": {
+      "get": {
+        "operationId": "getNovelRevisionBatch",
+        "summary": "按修订批次ID读取断点",
+        "x-openai-isConsequential": false,
+        "parameters": [
+          {"name": "book_id", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "revision_batch_id", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "responses": {"200": {"description": "修订批次恢复快照"}}
+      }
+    },
+    "/v1/books/{book_id}/revision-batches/{revision_batch_id}/approval": {
+      "post": {
+        "operationId": "approveNovelRevision",
+        "summary": "人工检阅后将全部合格修订晋级为正式正文",
+        "description": "仅review模式且全部目标章节QA通过后允许。修改过的章节会标记为尚未重新上传平台。",
+        "x-openai-isConsequential": false,
+        "parameters": [
+          {"name": "book_id", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "revision_batch_id", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "responses": {"200": {"description": "修订已正式保存"}}
+      }
+    },
+    "/v1/books/{book_id}/chapter-checkpoints": {
+      "post": {
+        "operationId": "commitNovelChapterCheckpoint",
+        "summary": "原子提交一章正文及其完整追踪状态",
+        "description": "长篇连续写作必须逐章调用。强制质量模式还必须提交当前contract_id和正文内可核验的self_review；正文、摘要和完整追踪状态共同成为可恢复检查点。成功返回前不得继续下一章。",
+        "x-openai-isConsequential": false,
+        "parameters": [{"name": "book_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {
+          "type": "object", "required": ["expected_revision", "idempotency_key", "chapter", "state"],
+          "properties": {
+            "expected_revision": {"type": "integer"},
+            "idempotency_key": {"type": "string", "minLength": 12, "maxLength": 120, "description": "同一章同一版本重试时必须保持不变，例如bookid-chapter-draftrevision"},
+            "revision_batch_id": {"type": "string", "description": "修改正式旧章节时必传，由configureNovelRevision返回"},
+            "contract_id": {"type": "string", "description": "强制质量模式必传，由createNovelWritingContract返回"},
+            "self_review": {"type": "object", "description": "强制质量模式必传；证据摘录必须逐字存在于正文", "properties": {
+              "protagonist_drives_plot": {"type": "boolean"}, "genre_promise_delivered": {"type": "boolean"},
+              "emotional_change_present": {"type": "boolean"}, "no_repeated_loop": {"type": "boolean"},
+              "ai_style_revised": {"type": "boolean"}, "notes": {"type": "string", "minLength": 40},
+              "evidence": {"type": "object", "properties": {
+                "protagonist_action": {"type": "string"}, "emotional_change": {"type": "string"}, "type_promise": {"type": "string"}
+              }}
+            }},
+            "chapter": {"type": "object", "required": ["chapter_no", "title", "body", "summary"], "properties": {
+              "chapter_no": {"type": "integer", "minimum": 1}, "title": {"type": "string"},
+              "body": {"type": "string"}, "summary": {"type": "string"}
+            }},
+            "state": {"type": "object", "required": ["context", "characters", "timeline", "foreshadowing", "chapter_index", "structured"],
+              "properties": {
+                "context": {}, "characters": {}, "timeline": {}, "foreshadowing": {},
+                "chapter_index": {}, "structured": {}, "outline": {}, "current_volume": {}, "book_bible": {}
+              }
+            }
+          }
+        }}}},
+        "responses": {
+          "200": {"description": "checkpoint_committed、提交后revision和恢复快照"},
+          "409": {"description": "版本冲突、章节不连续或前序章节未通过QA；必须重新读取恢复快照"}
+        }
       }
     },
     "/v1/books/{book_id}/chapters": {

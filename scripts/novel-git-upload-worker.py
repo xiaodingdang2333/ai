@@ -14,8 +14,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -28,6 +30,8 @@ EXPORT_ROOT = Path("/home/admin/ai/output/novel-git-upload")
 QUALITY_GATE_ROOT = EXPORT_ROOT / "quality-gates"
 FANQIE_UPLOAD = Path("/home/admin/ai/codex/skills/fanqie-upload/scripts/fanqie-upload.js")
 FANQIE_BROWSER_LEASE = Path("/home/admin/ai/scripts/fanqie-browser-lease.sh")
+UPLOAD_COMMAND_TIMEOUT_SECONDS = 15 * 60
+COMMAND_TERMINATION_GRACE_SECONDS = 20
 
 ACCOUNT_PORTS = {
     "account-a": 9223,
@@ -70,6 +74,17 @@ def compact_text(text: str) -> str:
 
 def han_count(text: str) -> int:
     return len(re.findall(r"[\u4e00-\u9fff]", compact_text(text)))
+
+
+def body_non_whitespace_chars(text: str) -> int:
+    """Match the Fanqie uploader's length unit, not a Han-only count.
+
+    Chapter contracts and `fanqie-upload.js --min-chars` are expressed in
+    non-whitespace body characters.  Counting only Han code points here made
+    otherwise qualifying chapters fail whenever punctuation, numerals or
+    Latin identifiers were used in normal prose.
+    """
+    return len(compact_text(text))
 
 
 def git_blob_sha(path: Path, repo: Path) -> str:
@@ -155,6 +170,34 @@ def project_formal_dir(project_path: Path) -> Path:
     return project_path / "formal"
 
 
+def upload_min_chars(data: dict[str, Any]) -> int:
+    """Use an explicit project contract override, otherwise keep 2500 as the
+    generic legacy-uploader safety floor.
+
+    A value of zero is valid only when the worker's exact-blob READY gate has
+    already accepted the project-specific chapter-length contract.
+    """
+    raw = data.get("upload_min_chars", 2500)
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        raise ValueError(f"upload_min_chars must be a non-negative integer, got {raw!r}")
+    if value < 0:
+        raise ValueError("upload_min_chars must be non-negative")
+    return value
+
+
+def draft_upload_timeout_seconds(chapter_count: int) -> int:
+    """Budget enough time for UI save + API readback for every chapter.
+
+    A fixed 15-minute cap can interrupt a healthy multi-chapter batch midway
+    through its verified saves.  Keep the short ceiling for small jobs, scale
+    larger exact ranges at ninety seconds per chapter plus startup/readback time,
+    and retain a one-hour fail-safe ceiling.
+    """
+    return min(60 * 60, max(UPLOAD_COMMAND_TIMEOUT_SECONDS, 3 * 60 + max(0, chapter_count) * 90))
+
+
 def title_from_web_chapter(path: Path, text: str, no: int) -> str:
     first = next((line.strip() for line in text.splitlines() if line.strip()), "")
     heading = re.match(r"^#{1,6}\s*(.+?)\s*$", first)
@@ -163,7 +206,7 @@ def title_from_web_chapter(path: Path, text: str, no: int) -> str:
     else:
         title = path.stem
     title = re.sub(r"^CH0*\d+[_\s-]*", "", title, flags=re.I)
-    title = re.sub(r"^第\s*0*\d+\s*章[\s._-]*", "", title)
+    title = re.sub(r"^第\s*(?:0*\d+|[〇零一二三四五六七八九十百千万两]+)\s*章[\s._-]*", "", title)
     title = title.strip() or f"第{no:03d}章"
     return title
 
@@ -181,6 +224,10 @@ def validate_candidate(project_path: Path, data: dict[str, Any]) -> list[str]:
         errors.append(f"expected_author_name must be {ACCOUNT_AUTHORS[account]!r}")
     if not str(data.get("fanqie_book_id") or "").strip():
         errors.append("fanqie_book_id is required")
+    try:
+        upload_min_chars(data)
+    except ValueError as error:
+        errors.append(str(error))
     if data.get("ai_use") not in {"yes", "no"}:
         errors.append("ai_use must be yes or no")
     elif account in ACCOUNT_AI_DECLARATIONS and data.get("ai_use") != ACCOUNT_AI_DECLARATIONS[account]:
@@ -223,6 +270,8 @@ def export_project(repo: Path, project_path: Path, data: dict[str, Any]) -> tupl
         exported.append({
             "chapter_no": no,
             "source": str(source.relative_to(repo)),
+            "source_blob_sha": git_blob_sha(source, repo),
+            "source_sha256": file_sha256(source),
             "target": str(target),
             "title": title_part,
         })
@@ -241,16 +290,49 @@ def export_project(repo: Path, project_path: Path, data: dict[str, Any]) -> tupl
     return export_dir, manifest
 
 
-def run_command(command: list[str], execute: bool) -> dict[str, Any]:
+def run_command(
+    command: list[str],
+    execute: bool,
+    *,
+    cwd: Path | None = None,
+    timeout_seconds: int = UPLOAD_COMMAND_TIMEOUT_SECONDS,
+) -> dict[str, Any]:
     if not execute:
         return {"command": command, "status": "dry_run"}
-    result = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    process = subprocess.Popen(
+        command,
+        cwd=cwd,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    )
+    try:
+        stdout, stderr = process.communicate(timeout=timeout_seconds)
+        returncode = process.returncode
+        status = "ok" if returncode == 0 else "failed"
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            stdout, stderr = process.communicate(timeout=COMMAND_TERMINATION_GRACE_SECONDS)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            stdout, stderr = process.communicate()
+        returncode = process.returncode
+        status = "timed_out"
     return {
         "command": command,
-        "status": "ok" if result.returncode == 0 else "failed",
-        "returncode": result.returncode,
-        "stdout_tail": (result.stdout or "")[-4000:],
-        "stderr_tail": (result.stderr or "")[-4000:],
+        "status": status,
+        "returncode": returncode,
+        "timeout_seconds": timeout_seconds,
+        "stdout_tail": (stdout or "")[-4000:],
+        "stderr_tail": (stderr or "")[-4000:],
     }
 
 
@@ -541,14 +623,7 @@ def quality_output_dir(repo: Path, project_path: Path, execute: bool) -> Path:
 
 
 def run_repo_script(repo: Path, command: list[str]) -> dict[str, Any]:
-    result = subprocess.run(command, cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-    return {
-        "command": command,
-        "status": "ok" if result.returncode == 0 else "failed",
-        "returncode": result.returncode,
-        "stdout_tail": (result.stdout or "")[-4000:],
-        "stderr_tail": (result.stderr or "")[-4000:],
-    }
+    return run_command(command, True, cwd=repo)
 
 
 def run_canonical_upload_quality(repo: Path, project_path: Path, data: dict[str, Any], execute: bool) -> tuple[bool, dict[str, Any], list[Path]]:
@@ -636,6 +711,7 @@ def run_quality_gate(repo: Path, project_path: Path, data: dict[str, Any], execu
 
     errors: list[str] = []
     chapter_rows: list[dict[str, Any]] = []
+    min_chars = upload_min_chars(data)
     if not available:
         errors.append("no formal chapters found")
     else:
@@ -645,16 +721,16 @@ def run_quality_gate(repo: Path, project_path: Path, data: dict[str, Any], execu
                 errors.append(f"missing or duplicate formal chapter CH{no:03d}")
                 continue
             text = path.read_text(encoding="utf-8")
-            chars = han_count(text)
+            chars = body_non_whitespace_chars(text)
             row = {
                 "chapter": f"CH{no:03d}",
                 "path": str(path.relative_to(repo)),
-                "han_count": chars,
+                "body_non_whitespace_chars": chars,
                 "blob_sha": git_blob_sha(path, repo),
             }
             chapter_rows.append(row)
-            if chars < 2500:
-                errors.append(f"CH{no:03d} han_count {chars} < 2500")
+            if min_chars > 0 and chars < min_chars:
+                errors.append(f"CH{no:03d} body_non_whitespace_chars {chars} < {min_chars}")
 
     latest = max(available) if available else 0
     reference_to = min(max(1, latest), max(10, to_chapter))
@@ -680,14 +756,15 @@ def run_quality_gate(repo: Path, project_path: Path, data: dict[str, Any], execu
             "--output-json",
             str(p0_output.relative_to(repo) if execute else p0_output),
         ]
-        p0_result = run_repo_script(repo, p0_cmd)
-        if p0_result["status"] != "ok":
-            errors.append("P0 dialogue visual hard gate failed to execute")
-        elif p0_output.exists():
-            p0_payload = load_json(p0_output)
-            p0_status = p0_payload.get("p0_manifest_result")
-            if p0_status != "PASS":
-                errors.append(f"P0 manifest result is {p0_status}, expected PASS")
+        p0_result = run_repo_script(repo, p0_cmd) if execute else {"status": "dry_run", "command": p0_cmd}
+        if execute:
+            if p0_result["status"] != "ok":
+                errors.append("P0 dialogue visual hard gate failed to execute")
+            elif p0_output.exists():
+                p0_payload = load_json(p0_output)
+                p0_status = p0_payload.get("p0_manifest_result")
+                if p0_status != "PASS":
+                    errors.append(f"P0 manifest result is {p0_status}, expected PASS")
 
     if not errors:
         ready_cmd = [
@@ -704,13 +781,14 @@ def run_quality_gate(repo: Path, project_path: Path, data: dict[str, Any], execu
             "--output-json",
             str(ready_output.relative_to(repo) if execute else ready_output),
         ]
-        ready_result = run_repo_script(repo, ready_cmd)
-        if ready_result["status"] != "ok":
-            errors.append("READY promotion current-blob validation failed")
-        elif ready_output.exists():
-            ready_payload = load_json(ready_output)
-            if ready_payload.get("promotion_result") != "PASS" or ready_payload.get("ready_after_strong_qa_allowed") is not True:
-                errors.append("READY promotion validator did not allow upload")
+        ready_result = run_repo_script(repo, ready_cmd) if execute else {"status": "dry_run", "command": ready_cmd}
+        if execute:
+            if ready_result["status"] != "ok":
+                errors.append("READY promotion current-blob validation failed")
+            elif ready_output.exists():
+                ready_payload = load_json(ready_output)
+                if ready_payload.get("promotion_result") != "PASS" or ready_payload.get("ready_after_strong_qa_allowed") is not True:
+                    errors.append("READY promotion validator did not allow upload")
 
     evidence = data.get("ready_evidence") if isinstance(data.get("ready_evidence"), dict) else {}
     if evidence.get("qa_passed") is not True:
@@ -724,6 +802,7 @@ def run_quality_gate(repo: Path, project_path: Path, data: dict[str, Any], execu
         "project": str(project_path.relative_to(repo)),
         "book_title": data.get("book_title"),
         "upload_range": {"from_chapter": from_chapter, "to_chapter": to_chapter},
+        "minimum_body_non_whitespace_chars": min_chars,
         "result": "PASS" if not errors else "FAIL",
         "blocking_reasons": errors,
         "chapters": chapter_rows,
@@ -768,6 +847,7 @@ def process_candidate(repo: Path, project_file: Path, execute: bool) -> dict[str
     expected = str(data["expected_author_name"])
     from_chapter = manifest["from_chapter"]
     to_chapter = manifest["to_chapter"]
+    min_chars = upload_min_chars(data)
 
     base = [
         "node",
@@ -782,6 +862,8 @@ def process_candidate(repo: Path, project_file: Path, execute: bool) -> dict[str
         str(from_chapter),
         "--to",
         str(to_chapter),
+        "--min-chars",
+        str(min_chars),
     ], execute)
     if execute and scan["status"] != "ok":
         return {"project_file": str(project_file.relative_to(repo)), "status": "scan_failed", "export_dir": str(export_dir), "scan": scan}
@@ -801,13 +883,19 @@ def process_candidate(repo: Path, project_file: Path, execute: bool) -> dict[str
         str(from_chapter),
         "--to",
         str(to_chapter),
+        "--min-chars",
+        str(min_chars),
     ]
     # The host has room for only one full browser.  The lease serializes
     # Fanqie uploads with the web ChatGPT browser and restores the latter when
     # the account operation is complete.
     if execute:
         drafts_command = [str(FANQIE_BROWSER_LEASE), "run", account, str(port), *drafts_command]
-    drafts = run_command(drafts_command, execute)
+    drafts = run_command(
+        drafts_command,
+        execute,
+        timeout_seconds=draft_upload_timeout_seconds(manifest["chapter_count"]),
+    )
     if execute and drafts["status"] != "ok":
         return {
             "project_file": str(project_file.relative_to(repo)),
@@ -817,27 +905,17 @@ def process_candidate(repo: Path, project_file: Path, execute: bool) -> dict[str
             "drafts": drafts,
         }
 
-    verify_command = [
-        *base,
-        "verify",
-        "--book",
-        str(export_dir),
-        "--book-id",
-        book_id,
-        "--port",
-        str(port),
-        "--expected-account",
-        expected,
-        "--from",
-        str(from_chapter),
-        "--to",
-        str(to_chapter),
-    ]
-    if execute:
-        verify_command = [str(FANQIE_BROWSER_LEASE), "run", account, str(port), *verify_command]
-    verify = run_command(verify_command, execute)
-
-    status = "dry_run" if not execute else ("uploaded_to_drafts" if verify["status"] == "ok" else "verify_failed")
+    # drafts performs its own final API readback of every requested chapter
+    # after saving.  Reopening another browser solely for verify duplicates
+    # the lease lifecycle and can turn a completed platform save into a
+    # misleading worker failure.
+    embedded_receipt = "UPLOAD_OK" in str(drafts.get("stdout_tail") or "")
+    verify = {
+        "status": "embedded_readback" if embedded_receipt else ("dry_run" if not execute else "missing_upload_receipt"),
+        "method": "fanqie-upload.js drafts final verifyRequestedDrafts",
+        "receipt": "UPLOAD_OK",
+    }
+    status = "dry_run" if not execute else ("uploaded_to_drafts" if embedded_receipt else "verify_failed")
     state_paths: list[Path] = []
     if execute and status == "uploaded_to_drafts":
         uploaded_status = f"CH{to_chapter:03d}_UPLOADED_TO_DRAFTS"
@@ -867,12 +945,29 @@ def process_candidate(repo: Path, project_file: Path, execute: bool) -> dict[str
         data["project_status"] = uploaded_status
         data["next_action"] = next_action
         data["updated_at"] = now_iso()
-        data["last_upload"] = {
+        upload_receipt = {
             "uploaded_at": now_iso(),
             "export_dir": str(export_dir),
             "from_chapter": from_chapter,
             "to_chapter": to_chapter,
+            "source_blob_set": [
+                {
+                    "chapter_no": row["chapter_no"],
+                    "source": row["source"],
+                    "blob_sha": row["source_blob_sha"],
+                }
+                for row in manifest["chapters"]
+            ],
+            "platform_verify_receipt": verify,
         }
+        data["last_upload"] = upload_receipt
+        history = data.get("upload_history")
+        if not isinstance(history, list):
+            history = []
+        history.append(upload_receipt)
+        # Keep an auditable multi-range history without allowing an unattended
+        # timer to make one project's metadata grow without bound.
+        data["upload_history"] = history[-200:]
         write_json(project_file, data)
         state_paths.append(project_file)
         if isinstance(current, dict):
@@ -911,6 +1006,24 @@ def process_candidate(repo: Path, project_file: Path, execute: bool) -> dict[str
     }
 
 
+def resolve_project_files(repo: Path, values: list[str]) -> list[Path]:
+    resolved: list[Path] = []
+    for value in values:
+        raw = Path(value)
+        path = raw if raw.is_absolute() else repo / raw
+        project_file = path if path.name == "00_PROJECT.json" else path / "00_PROJECT.json"
+        project_file = project_file.resolve()
+        try:
+            project_file.relative_to(repo)
+        except ValueError as error:
+            raise ValueError(f"project must be inside repository: {value}") from error
+        if not project_file.exists():
+            raise ValueError(f"project 00_PROJECT.json not found: {value}")
+        if project_file not in resolved:
+            resolved.append(project_file)
+    return resolved
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Upload Git-ready web novel projects to Fanqie drafts.")
     parser.add_argument("--repo", type=Path, default=DEFAULT_REPO)
@@ -918,6 +1031,7 @@ def main() -> int:
     parser.add_argument("--git-commit", action="store_true", help="Commit upload status updates after successful upload.")
     parser.add_argument("--git-push", action="store_true", help="Push committed upload status updates to origin/main.")
     parser.add_argument("--limit", type=int, default=1)
+    parser.add_argument("--project", action="append", default=[], help="Exact project directory or 00_PROJECT.json; may be repeated.")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 
@@ -925,16 +1039,28 @@ def main() -> int:
     if not (repo / ".git").exists():
         print(f"not a Git repository: {repo}", file=sys.stderr)
         return 2
-    machine_gate_updates = evaluate_pending_web_machine_gates(repo, args.execute)
-    recovery_updates = recover_interrupted_web_transactions(repo, args.execute)
-    candidates = []
-    for project_file in sorted((repo / "novels").glob("*/00_PROJECT.json")):
+    if args.project:
+        # An operator-selected upload must not incidentally advance unrelated
+        # web transactions merely because the timer's housekeeping phases scan
+        # the whole repository.  The normal timer path retains that behavior.
+        machine_gate_updates = []
+        recovery_updates = []
         try:
-            data = load_json(project_file)
-        except Exception:
-            continue
-        if data.get("auto_upload_to_drafts") is True and data.get("upload_status") == "ready_for_draft_upload":
-            candidates.append(project_file)
+            candidates = resolve_project_files(repo, args.project)
+        except ValueError as error:
+            print(str(error), file=sys.stderr)
+            return 2
+    else:
+        machine_gate_updates = evaluate_pending_web_machine_gates(repo, args.execute)
+        recovery_updates = recover_interrupted_web_transactions(repo, args.execute)
+        candidates = []
+        for project_file in sorted((repo / "novels").glob("*/00_PROJECT.json")):
+            try:
+                data = load_json(project_file)
+            except Exception:
+                continue
+            if data.get("auto_upload_to_drafts") is True and data.get("upload_status") == "ready_for_draft_upload":
+                candidates.append(project_file)
 
     selected = candidates[: max(1, args.limit)]
     results = [process_candidate(repo, path, args.execute) for path in selected]

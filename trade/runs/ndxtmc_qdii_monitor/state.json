@@ -2,23 +2,23 @@
   "sent_alert_keys": [
     "2026-06-10:ndxtmc:2762.01"
   ],
-  "last_checked_at": "2026-06-30T06:31:02",
+  "last_checked_at": "2026-07-11T06:31:02",
   "last_snapshot": {
     "ndxtmc": [
       {
-        "date": "2026-06-24",
-        "close": 2853.45
+        "date": "2026-07-07",
+        "close": 2867.09
       },
       {
-        "date": "2026-06-25",
-        "close": 2860.55
+        "date": "2026-07-08",
+        "close": 2889.26
       },
       {
-        "date": "2026-06-26",
-        "close": 2824.76
+        "date": "2026-07-09",
+        "close": 2939.42
       }
     ],
-    "skip_reason": "stale_ndxtmc:latest=2026-06-26,expected_at_least=2026-06-29"
+    "skip_reason": "stale_ndxtmc:latest=2026-07-09,expected_at_least=2026-07-10"
   },
   "alerts": [
     {

@@ -13,6 +13,8 @@ CHATGPT_UNIT="chatgpt-web-browser.service"
 LEASE_STARTED=0
 LEASE_ACCOUNT=""
 LEASE_CHATGPT_WAS_ACTIVE=0
+SAVE_PROFILE_ON_SUCCESS_ONLY="${FANQIE_LEASE_SAVE_ON_SUCCESS:-0}"
+BROWSER_START_URL="${FANQIE_BROWSER_START_URL:-https://fanqienovel.com/writer/zone}"
 
 usage() {
   echo "Usage: fanqie-browser-lease.sh run account-a|account-b|account-c PORT COMMAND [ARGS...]" >&2
@@ -105,7 +107,15 @@ main() {
     local rc=$?
     if [[ "$LEASE_STARTED" -eq 1 ]]; then
       stop_fanqie
-      save_profile "$LEASE_ACCOUNT" || true
+      # QR login starts by clearing the live profile.  A failed/expired QR
+      # must never overwrite the last known-good account backup with that
+      # empty state.  Existing callers retain the historical save-on-exit
+      # behavior unless they explicitly opt into this fail-safe mode.
+      if [[ "$SAVE_PROFILE_ON_SUCCESS_ONLY" != "1" || "$rc" -eq 0 ]]; then
+        save_profile "$LEASE_ACCOUNT" || true
+      else
+        echo "Not saving $LEASE_ACCOUNT profile after failed leased command" >&2
+      fi
     fi
     if [[ "$LEASE_CHATGPT_WAS_ACTIVE" -eq 1 ]]; then
       if ! systemctl start "$CHATGPT_UNIT" || ! wait_cdp 9224; then
@@ -126,7 +136,7 @@ main() {
     --disable-background-networking --disable-component-update --renderer-process-limit=1 \
     --password-store=basic --remote-debugging-address=127.0.0.1 --remote-debugging-port="$port" \
     --remote-allow-origins='*' --user-data-dir="$LIVE_DIR/$account" \
-    https://fanqienovel.com/writer/zone >/dev/null
+    "$BROWSER_START_URL" >/dev/null
   LEASE_STARTED=1
   wait_cdp "$port" || { echo "Fanqie CDP did not become ready" >&2; exit 1; }
   # The uploader itself performs the authoritative expected-account API check.

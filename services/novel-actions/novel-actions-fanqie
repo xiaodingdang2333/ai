@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+WORK_ROOT=/home/admin/ai
+CACHE="$WORK_ROOT/codex/skills/fanqie-write-upload/scripts/fanqie-account-cache.sh"
+UPLOADER="$WORK_ROOT/codex/skills/fanqie-upload/scripts/fanqie-upload.js"
+FINDER="$WORK_ROOT/services/novel-actions/fanqie-find-book.js"
+LISTER="$WORK_ROOT/services/novel-actions/fanqie-list-drafts.js"
+export HOME=/root WORK_ROOT
+cd "$WORK_ROOT"
+
+fail() { echo "$1" >&2; exit 2; }
+valid_account() {
+  case "$1:$2:$3" in
+    account-a:西大水怪:9223|account-b:桃枝醒醒:9224|account-c:泡芙软呼呼:9225) ;;
+    *) fail "账号、笔名或端口不在白名单" ;;
+  esac
+}
+valid_title() {
+  [[ -n "$1" && "$1" != *$'\n'* && "$1" != */* ]] || fail "书名无效"
+  [[ -d "$WORK_ROOT/txt/$1" ]] || fail "本地书籍目录不存在"
+}
+cleanup() {
+  if [[ -n "${ACCOUNT:-}" && "${SAVE_CACHE:-0}" == 1 ]]; then
+    "$CACHE" save "$ACCOUNT" >/dev/null 2>&1 || true
+  else
+    "$CACHE" stop >/dev/null 2>&1 || true
+  fi
+}
+
+[[ $# -ge 1 ]] || fail "缺少命令"
+COMMAND="$1"; shift
+if [[ "$COMMAND" == check ]]; then
+  [[ -x "$CACHE" && -f "$UPLOADER" && -f "$FINDER" && -f "$LISTER" ]] || fail "上传组件缺失"
+  echo '{"ok":true,"user":"root","mode":"check"}'
+  exit 0
+fi
+if [[ "$COMMAND" == cancel ]]; then
+  [[ $# -eq 1 && "$1" =~ ^[0-9]+$ ]] || fail "取消任务必须提供数字作品ID"
+  TARGET_BOOK_ID="$1"
+  for PROC in /proc/[0-9]*; do
+    [[ -r "$PROC/cmdline" ]] || continue
+    CMDLINE="$(tr '\0' ' ' < "$PROC/cmdline" 2>/dev/null || true)"
+    if [[ "$CMDLINE" == *"/usr/local/sbin/novel-actions-fanqie upload "* && "$CMDLINE" == *" $TARGET_BOOK_ID "* ]]; then
+      PID="${PROC##*/}"
+      [[ "$PID" == "$$" ]] || kill -TERM -- "-$PID" 2>/dev/null || kill -TERM "$PID" 2>/dev/null || true
+    fi
+  done
+  "$CACHE" stop >/dev/null 2>&1 || true
+  printf '{"ok":true,"cancelled_book_id":"%s"}\n' "$TARGET_BOOK_ID"
+  exit 0
+fi
+
+[[ $# -ge 4 ]] || fail "参数不足"
+ACCOUNT="$1"; EXPECTED="$2"; PORT="$3"; TITLE="$4"; shift 4
+valid_account "$ACCOUNT" "$EXPECTED" "$PORT"
+valid_title "$TITLE"
+exec 9>/run/lock/novel-actions-fanqie.lock
+flock -x 9
+trap cleanup EXIT
+"$CACHE" switch-start "$ACCOUNT" "$PORT" >/dev/null
+for _ in $(seq 1 30); do
+  if nc -z 127.0.0.1 "$PORT" >/dev/null 2>&1; then break; fi
+  sleep 1
+done
+nc -z 127.0.0.1 "$PORT" >/dev/null 2>&1 || fail "浏览器端口$PORT未启动"
+IDENTITY="$(timeout --signal=TERM --kill-after=5s 60s "$CACHE" identify "$PORT" | tail -n 1)"
+[[ "$IDENTITY" == "$EXPECTED" ]] || fail "账号核验失败：期望$EXPECTED，实际$IDENTITY"
+SAVE_CACHE=1
+
+if [[ "$COMMAND" == bind ]]; then
+  node "$FINDER" --port "$PORT" --title "$TITLE"
+  exit 0
+fi
+if [[ "$COMMAND" == inspect ]]; then
+  [[ $# -eq 1 && "$1" =~ ^[0-9]+$ ]] || fail "检查任务必须提供数字作品ID"
+  node "$LISTER" --port "$PORT" --book-id "$1" --book "$TITLE"
+  exit 0
+fi
+
+[[ "$COMMAND" == upload && $# -eq 3 ]] || fail "上传参数无效"
+BOOK_ID="$1"; START="$2"; END="$3"
+[[ "$BOOK_ID" =~ ^[0-9]+$ && "$START" =~ ^[0-9]+$ && "$END" =~ ^[0-9]+$ ]] || fail "作品ID或章节范围无效"
+(( START >= 1 && END >= START && END - START <= 99 )) || fail "章节范围无效"
+
+VERIFIED=$((END - START + 1))
+TOTAL_TIMEOUT=$((VERIFIED * 240 + 120))
+timeout --signal=TERM --kill-after=10s "$TOTAL_TIMEOUT" \
+  node "$UPLOADER" drafts --root "$WORK_ROOT/txt" --book "$TITLE" --book-id "$BOOK_ID" --port "$PORT" --from "$START" --to "$END"
+printf '{"account":"%s","book_id":"%s","from":%d,"to":%d,"verified":%d,"execution_user":"root"}\n' \
+  "$EXPECTED" "$BOOK_ID" "$START" "$END" "$VERIFIED"

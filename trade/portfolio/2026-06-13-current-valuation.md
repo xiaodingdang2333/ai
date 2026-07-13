@@ -7,7 +7,7 @@ Data refresh notes:
 - People.cn / Renminwang `603000.SH`: 500 shares, latest Tencent quote 15.34 CNY at 2026-06-25 16:14, position value about 7,670.00 CNY.
 - Renminwang realized stock-account cash from earlier 200-share sale: 3,320 CNY in monitor state.
 - CMB gold account: 16g with average cost 918.94 CNY/g from the user's CMB/App account as confirmed on 2026-06-25. Latest available CMB AU9999 quote on 2026-06-25 15:45 was 875.00; estimated CMB buy price 878.86 and estimated sell price 873.86, so estimated liquidation value is about 13,981.76 CNY.
-- `009052`: 17,007.91 CNY from the user's latest manual account update on 2026-06-30, with implied P/L -1,343.57 CNY against cost basis 18,351.48 CNY. Use this account value over public estimates; public estimates are market context only.
+- `009052`: 16,974.45 CNY from the user's latest App update on 2026-07-02, confirmed unit NAV 1.1671 and reconstructed holding 14,544.12646731 shares, with P/L -1,377.03 CNY against cost basis 18,351.48 CNY. Future values use saved shares multiplied by the latest confirmed NAV; intraday estimates must not be shown as unit NAV.
 - `022430`: 10,525.04 CNY from user's securities app/account value on 2026-06-26, with app/account P/L +525.04 CNY and yesterday income +151.31 CNY. Implied cost basis remains about 10,000.00 CNY. Use this app value over public estimates. Note: prior records identify `022430` as 华夏中证A500ETF联接A; user may refer to it as "中正/中证500", so verify code if exact index exposure matters.
 - Fixed wealth-management product: 50,000 CNY after 5,000 CNY was moved into `009052`; expected 4% annualized, matures 2026-07-27.
 - Cash-like Lingqianbao balance: 10,022.68 CNY from user's app/account value on 2026-06-25.

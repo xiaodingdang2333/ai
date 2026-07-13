@@ -46,6 +46,7 @@ FINANCE_QUOTE_CACHE = ROOT / "finance-quote-cache.json"
 FINANCE_QUOTE_CACHE_LOCK = threading.Lock()
 FINANCE_REFRESH_CODES = ("009052", "022430", "017091", "017093", "019118", "603000", "gold")
 NOVEL_GIT_REPO = Path("/home/admin/chatgpt-novel-production-system")
+NOVEL_DASHBOARD_RECENT_SAMPLE_LIMIT = 3
 
 SCHEDULED_TASKS = [
     {
@@ -590,6 +591,17 @@ def novel_git_jobs():
                 "books": status.get("books") if isinstance(status.get("books"), list) else [],
             })
 
+    # The dashboard is an operational view, not an archive.  Keep only the
+    # three most recently updated sample jobs; historical Git status files
+    # remain untouched for audit and later research.
+    sample_jobs = [job for job in jobs if job.get("type") == "sample"]
+    recent_sample_jobs = sorted(
+        sample_jobs,
+        key=lambda job: str(job.get("updated_at") or ""),
+        reverse=True,
+    )[:NOVEL_DASHBOARD_RECENT_SAMPLE_LIMIT]
+    jobs = [job for job in jobs if job.get("type") != "sample"] + recent_sample_jobs
+
     write_pending = repo / "server-write-requests" / "pending"
     write_results = repo / "server-write-results"
     if write_pending.exists():
@@ -642,7 +654,12 @@ def novel_git_jobs():
         "completed": 6,
         "uploaded_to_drafts": 7,
     }
-    jobs.sort(key=lambda row: (status_order.get(row.get("status"), 9), str(row.get("updated_at") or "")), reverse=False)
+    other_jobs = [job for job in jobs if job.get("type") != "sample"]
+    other_jobs.sort(
+        key=lambda row: (status_order.get(row.get("status"), 9), str(row.get("updated_at") or "")),
+        reverse=False,
+    )
+    jobs = recent_sample_jobs + other_jobs
     return {
         "repo": str(repo),
         "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),

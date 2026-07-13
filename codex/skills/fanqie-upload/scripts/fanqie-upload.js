@@ -18,6 +18,11 @@ function getCdp() {
 }
 const DEFAULT_ROOT = fs.existsSync('/home/admin/ai/txt') ? '/home/admin/ai/txt' : path.join('F:', 'ai', 'txt');
 const DEFAULT_PORT = 9223;
+const DEFAULT_MIN_CHARS = 2500;
+// This is a fail-closed safety guard, not a normal pagination limit.  The
+// list APIs must either report every row or return an error; do not silently
+// accept a truncated result when a book has more pages than expected.
+const MAX_PAGINATION_PAGES = 10000;
 const API_PUBLISH_SCRIPT = '/home/admin/ai/scripts/fanqie-api-publish.js';
 const PORT_ACCOUNT_MAP = {
   9223: { account: 'account-a', expected: '\u897f\u5927\u6c34\u602a' },
@@ -43,13 +48,17 @@ const SAVE_DRAFT_LABELS = [U.saveDraft, '\\u5b58\\u8349\\u7a3f'];
 
 function usage() {
   console.log(`Usage:
-  node fanqie-upload.js scan --book <book-dir-or-name> [--root F:\\ai\\txt] [--from N] [--to N]
-  node fanqie-upload.js drafts --book <book-dir-or-name> --book-id <id> [--port 9223] [--expected-account NAME] [--from N] [--to N]
-  node fanqie-upload.js verify --book <book-dir-or-name> --book-id <id> [--port 9223] [--expected-account NAME] [--from N] [--to N]
-  node fanqie-upload.js repair --book <book-dir-or-name> --book-id <id> [--port 9223] [--from N] [--to N]
-  node fanqie-upload.js repair-href --book <book-dir-or-name> --book-id <id> --href <edit-url> [--port 9223] [--from N] [--to N]
+  node fanqie-upload.js scan --book <book-dir-or-name> [--root F:\\ai\\txt] [--chapter-dir <dir>] [--min-chars 2500|0] [--from N] [--to N]
+  node fanqie-upload.js drafts --book <book-dir-or-name> --book-id <id> [--port 9223] [--expected-account NAME] [--chapter-dir <dir>] [--min-chars 2500|0] [--from N] [--to N]
+  node fanqie-upload.js verify --book <book-dir-or-name> --book-id <id> [--port 9223] [--expected-account NAME] [--chapter-dir <dir>] [--min-chars 2500|0] [--from N] [--to N]
+  node fanqie-upload.js repair --book <book-dir-or-name> --book-id <id> [--port 9223] [--expected-account NAME] [--chapter-dir <dir>] [--from N] [--to N]
+  node fanqie-upload.js repair-href --book <book-dir-or-name> --book-id <id> --href <edit-url> [--port 9223] [--expected-account NAME] [--chapter-dir <dir>] [--from N] [--to N]
+  node fanqie-upload.js repair-blank --book <book-dir-or-name> --book-id <id> --item-id <draft-id> [--port 9223] [--expected-account NAME] [--chapter-dir <dir>] [--from N] [--to N]
+  node fanqie-upload.js inventory --book-id <id> [--port 9223] [--expected-account NAME]
   node fanqie-upload.js publish --book <book-dir-or-name> --book-id <id> [--account account-a] [--expected-account 西大水怪] [--port 9223] [--from N] [--to N]
   node fanqie-upload.js all --book <book-dir-or-name> --book-id <id> [--port 9223] [--from N] [--to N]
+
+  --min-chars defaults to ${DEFAULT_MIN_CHARS} non-whitespace body characters for scan, drafts, verify, and all. Use --min-chars 0 only to opt out explicitly.
 `);
 }
 
@@ -58,6 +67,14 @@ function argValue(args, name, fallback = undefined) {
   if (index === -1) return fallback;
   if (!args[index + 1]) throw new Error(`Missing value for ${name}`);
   return args[index + 1];
+}
+
+function nonNegativeInteger(value, optionName) {
+  const source = String(value);
+  if (!/^\d+$/.test(source)) throw new Error(`${optionName} must be a non-negative integer`);
+  const parsed = Number(source);
+  if (!Number.isSafeInteger(parsed)) throw new Error(`${optionName} is outside the supported range`);
+  return parsed;
 }
 
 function sleep(ms) {
@@ -77,32 +94,118 @@ function resolveBookDir(book, root) {
   throw new Error(`Book directory not found: ${book}`);
 }
 
+const CHINESE_CHAPTER_DIGITS = {
+  '零': 0, '〇': 0, '一': 1, '二': 2, '两': 2, '三': 3, '四': 4,
+  '五': 5, '六': 6, '七': 7, '八': 8, '九': 9
+};
+const CHINESE_CHAPTER_TOKEN = '[0-9０-９零〇一二两三四五六七八九十百千万]+';
+const CHINESE_CHAPTER_MARKER = new RegExp(`第\\s*(${CHINESE_CHAPTER_TOKEN})\\s*章`, 'i');
+const CHINESE_CHAPTER_AT_START = new RegExp(`^第\\s*(${CHINESE_CHAPTER_TOKEN})\\s*章`, 'i');
+const ENGLISH_CHAPTER_AT_START = /^(?:chapter|ch)\s*[_ .-]*0*\d+/i;
+
+function asciiDigits(text) {
+  return String(text || '').replace(/[０-９]/g, digit => String.fromCharCode(digit.charCodeAt(0) - 0xFEE0));
+}
+
+function chineseNumeralToNumber(token) {
+  const source = asciiDigits(token).trim();
+  if (/^\d+$/.test(source)) return Number(source);
+  if (!/^[零〇一二两三四五六七八九十百千万]+$/.test(source)) return 0;
+  let total = 0;
+  let current = 0;
+  for (const char of source) {
+    if (Object.prototype.hasOwnProperty.call(CHINESE_CHAPTER_DIGITS, char)) {
+      current = CHINESE_CHAPTER_DIGITS[char];
+      continue;
+    }
+    const unit = char === '十' ? 10 : char === '百' ? 100 : char === '千' ? 1000 : char === '万' ? 10000 : 0;
+    if (!unit) return 0;
+    if (current === 0) current = 1;
+    total += current * unit;
+    current = 0;
+  }
+  return total + current;
+}
+
+// Keep chapter-number parsing in one place: local filenames, local headings,
+// and platform titles all use this helper so their interpretation cannot drift.
+function chapterNumberFromText(text) {
+  const source = asciiDigits(String(text || ''));
+  const chinese = source.match(CHINESE_CHAPTER_MARKER);
+  if (chinese) {
+    const no = chineseNumeralToNumber(chinese[1]);
+    if (Number.isSafeInteger(no) && no > 0) return no;
+  }
+  const english = source.match(/(?:^|[\s._-])(?:chapter|ch)\s*[_ .-]*0*(\d+)/i);
+  if (english) {
+    const no = Number(english[1]);
+    if (Number.isSafeInteger(no) && no > 0) return no;
+  }
+  const numeric = source.match(/^0*(\d+)(?=$|[\s._-])/);
+  if (numeric) {
+    const no = Number(numeric[1]);
+    if (Number.isSafeInteger(no) && no > 0) return no;
+  }
+  return 0;
+}
+
+function stripLeadingChapterMarker(title) {
+  return asciiDigits(String(title || ''))
+    .trim()
+    .replace(new RegExp(`^第\\s*${CHINESE_CHAPTER_TOKEN}\\s*章\\s*[：:.．、，,;；—_-]*\\s*`, 'i'), '')
+    .replace(/^(?:chapter|ch)\s*[_ .-]*0*\d+\s*[：:.．、，,;；—_-]*\s*/i, '')
+    .replace(/^0*\d+\s*[._-]+\s*/, '')
+    .trim();
+}
+
+function parseBareChapterHeading(line) {
+  const title = String(line || '').trim();
+  if (!title || !(CHINESE_CHAPTER_AT_START.test(title) || ENGLISH_CHAPTER_AT_START.test(title))) return null;
+  const no = chapterNumberFromText(title);
+  return no ? { no, title } : null;
+}
+
+function resolveChapterDir(bookDir, configuredDir = '') {
+  const requested = configuredDir || '正文';
+  const candidates = path.isAbsolute(requested)
+    ? [path.resolve(requested)]
+    : [path.resolve(bookDir, requested), path.resolve(requested)];
+  const chapterDir = candidates.find(candidate => fs.existsSync(candidate) && fs.statSync(candidate).isDirectory());
+  if (!chapterDir) throw new Error(`Chapter directory not found: ${candidates.join(' or ')}`);
+  return chapterDir;
+}
+
 function parseChapter(file) {
   const raw = normalize(fs.readFileSync(file, 'utf8'));
   const lines = raw.split('\n');
   const firstIndex = lines.findIndex(line => line.trim());
   const firstLine = firstIndex >= 0 ? lines[firstIndex].trim() : '';
-  const heading = firstLine.match(/^#{1,6}\s+(.+?)\s*$/);
-  const title = (heading ? heading[1] : path.basename(file, '.md')).trim();
-  const noMatch = title.match(/第\s*0*(\d+)\s*章/) || path.basename(file).match(/第\s*0*(\d+)\s*章/) || path.basename(file).match(/^0*(\d+)[\s._-]/);
-  if (!noMatch) throw new Error(`Cannot find chapter number: ${file}`);
-  const bodyLines = lines.filter((_, index) => !(heading && index === firstIndex));
+  const markdownHeading = firstLine.match(/^#{1,6}\s+(.+?)\s*$/);
+  const bareHeading = markdownHeading ? null : parseBareChapterHeading(firstLine);
+  const filenameTitle = path.basename(file, path.extname(file)).trim();
+  const title = (markdownHeading ? markdownHeading[1] : bareHeading ? bareHeading.title : filenameTitle).trim();
+  const titleNo = chapterNumberFromText(title);
+  const filenameNo = chapterNumberFromText(filenameTitle);
+  if (titleNo && filenameNo && titleNo !== filenameNo) {
+    throw new Error(`Chapter number mismatch between heading and filename: ${file}`);
+  }
+  const no = titleNo || filenameNo;
+  if (!no) throw new Error(`Cannot find chapter number: ${file}`);
+  const bodyLines = lines.filter((_, index) => !((markdownHeading || bareHeading) && index === firstIndex));
   const body = bodyLines.join('\n').trim() + '\n';
-  const no = Number(noMatch[1]);
   return {
     no,
     padded: String(no).padStart(3, '0'),
     title,
-    shortTitle: title.replace(/^(?:第\s*0*\d+\s*章[\s._-]*)+/, '').trim(),
+    shortTitle: stripLeadingChapterMarker(title),
     body,
-    bodyChars: body.trim().length,
+    bodyChars: compactText(body).length,
     file
   };
 }
 
-function loadChapters(bookDir, from = 1, to = Number.MAX_SAFE_INTEGER) {
-  const chapterDir = path.join(bookDir, '正文');
-  if (!fs.existsSync(chapterDir)) throw new Error(`Chapter directory not found: ${chapterDir}`);
+function loadChapters(bookDir, from = 1, to = Number.MAX_SAFE_INTEGER, configuredDir = '') {
+  const chapterDir = resolveChapterDir(bookDir, configuredDir);
   return fs.readdirSync(chapterDir)
     .filter(name => name.toLowerCase().endsWith('.md'))
     .map(name => parseChapter(path.join(chapterDir, name)))
@@ -115,8 +218,7 @@ function fullChapterTitle(chapter) {
 }
 
 function chapterNumber(title) {
-  const match = String(title || '').match(/第\s*0*(\d+)\s*章/);
-  return match ? Number(match[1]) : 0;
+  return chapterNumberFromText(title);
 }
 
 function sourceParagraphCount(chapter) {
@@ -127,7 +229,8 @@ function compactText(text) {
   return normalize(String(text || '')).replace(/\s+/g, '');
 }
 
-function validateLocalChapters(chapters) {
+function validateLocalChapters(chapters, options = {}) {
+  const minChars = options.minChars || 0;
   const byNumber = new Map();
   const byTitle = new Map();
   for (const chapter of chapters) {
@@ -138,6 +241,9 @@ function validateLocalChapters(chapters) {
     if (byTitle.has(title)) throw new Error(`Duplicate local chapter title: ${title}`);
     if (!chapter.shortTitle) throw new Error(`Empty local chapter title: ${chapter.file}`);
     if (!chapter.body.trim()) throw new Error(`Empty local chapter body: ${chapter.file}`);
+    if (minChars > 0 && chapter.bodyChars < minChars) {
+      throw new Error(`Local chapter ${chapter.padded} has ${chapter.bodyChars} non-whitespace body characters, below --min-chars ${minChars}: ${chapter.file}`);
+    }
     byNumber.set(chapter.no, chapter.file);
     byTitle.set(title, chapter.file);
   }
@@ -241,50 +347,97 @@ async function navigate(Page, url, waitMs = 4500) {
   }
 }
 
-async function fetchDraftList(Runtime, bookId) {
+async function fetchPaginatedList(Runtime, bookId, options) {
+  const config = {
+    label: options.label,
+    endpoint: options.endpoint,
+    listKey: options.listKey,
+    bookId: String(bookId),
+    pageSize: 80,
+    maxPages: MAX_PAGINATION_PAGES
+  };
   const result = await evalv(Runtime, `(
     async () => {
+      const config = ${JSON.stringify(config)};
       const all = [];
-      for (let pageIndex = 0; pageIndex < 10; pageIndex++) {
-        const url = '/api/author/chapter/draft_list/v1?book_id=${bookId}&page_index=' + pageIndex + '&page_count=80';
-        const res = await fetch(url, { credentials: 'include' });
-        const json = await res.json();
-        if (!json || json.code !== 0) return { code: json && json.code, message: json && json.message, draft_list: all };
-        const rows = (json.data && json.data.draft_list) || [];
-        all.push(...rows);
-        const total = Number(json.data && json.data.total_count || 0);
-        if (!rows.length || all.length >= total) break;
+      const seen = new Set();
+      let expectedTotal = null;
+      for (let pageIndex = 0; pageIndex < config.maxPages; pageIndex++) {
+        const url = config.endpoint + '?book_id=' + encodeURIComponent(config.bookId)
+          + '&page_index=' + pageIndex + '&page_count=' + config.pageSize;
+        let res;
+        let json;
+        try {
+          res = await fetch(url, { credentials: 'include' });
+          json = await res.json();
+        } catch (error) {
+          return { code: -32010, message: config.label + ' pagination request failed at page ' + pageIndex + ': ' + (error && error.message || error) };
+        }
+        if (!json || json.code !== 0) {
+          return { code: json && json.code, message: json && json.message, page_index: pageIndex };
+        }
+        const data = json.data || {};
+        const rows = data[config.listKey];
+        if (!Array.isArray(rows)) {
+          return { code: -32011, message: config.label + ' pagination returned a non-array ' + config.listKey + ' at page ' + pageIndex };
+        }
+        const totalRaw = data.total_count;
+        if (totalRaw !== undefined && totalRaw !== null && totalRaw !== '') {
+          const total = Number(totalRaw);
+          if (!Number.isSafeInteger(total) || total < 0) {
+            return { code: -32012, message: config.label + ' pagination returned invalid total_count: ' + totalRaw };
+          }
+          if (expectedTotal !== null && expectedTotal !== total) {
+            return { code: -32013, message: config.label + ' pagination total_count changed from ' + expectedTotal + ' to ' + total };
+          }
+          expectedTotal = total;
+        }
+        for (const row of rows) {
+          const key = row && typeof row === 'object'
+            ? String(row.item_id != null ? row.item_id : row.id != null ? row.id : row.article_id != null ? row.article_id : row.chapter_id != null ? row.chapter_id : JSON.stringify(row))
+            : JSON.stringify(row);
+          if (seen.has(key)) {
+            return { code: -32014, message: config.label + ' pagination repeated row ' + key + ' at page ' + pageIndex };
+          }
+          seen.add(key);
+          all.push(row);
+        }
+        if (expectedTotal !== null) {
+          if (all.length > expectedTotal) {
+            return { code: -32015, message: config.label + ' pagination exceeded total_count ' + expectedTotal + ' at page ' + pageIndex };
+          }
+          if (all.length === expectedTotal) return { code: 0, [config.listKey]: all, total_count: expectedTotal };
+        }
+        if (!rows.length || rows.length < config.pageSize) {
+          if (expectedTotal !== null && all.length !== expectedTotal) {
+            return { code: -32016, message: config.label + ' pagination ended at ' + all.length + ' rows but total_count is ' + expectedTotal };
+          }
+          return { code: 0, [config.listKey]: all, total_count: expectedTotal };
+        }
       }
-      return { code: 0, draft_list: all };
+      return { code: -32017, message: config.label + ' pagination exceeded fail-closed safety limit of ' + config.maxPages + ' pages' };
     }
   )()`);
   if (!result || result.code !== 0) {
-    throw new Error(`Draft list API failed: ${JSON.stringify(result)}`);
+    throw new Error(`${options.label} API failed: ${JSON.stringify(result)}`);
   }
   return result;
 }
 
+async function fetchDraftList(Runtime, bookId) {
+  return await fetchPaginatedList(Runtime, bookId, {
+    label: 'Draft list',
+    endpoint: '/api/author/chapter/draft_list/v1',
+    listKey: 'draft_list'
+  });
+}
+
 async function fetchPublishedList(Runtime, bookId) {
-  const result = await evalv(Runtime, `(
-    async () => {
-      const all = [];
-      for (let pageIndex = 0; pageIndex < 50; pageIndex++) {
-        const url = '/api/author/chapter/chapter_list/v1?book_id=${bookId}&page_index=' + pageIndex + '&page_count=80';
-        const res = await fetch(url, { credentials: 'include' });
-        const json = await res.json();
-        if (!json || json.code !== 0) return { code: json && json.code, message: json && json.message, item_list: all };
-        const rows = (json.data && json.data.item_list) || [];
-        all.push(...rows);
-        const total = Number(json.data && json.data.total_count || 0);
-        if (!rows.length || all.length >= total) break;
-      }
-      return { code: 0, item_list: all };
-    }
-  )()`);
-  if (!result || result.code !== 0) {
-    throw new Error(`Published chapter list API failed: ${JSON.stringify(result)}`);
-  }
-  return result;
+  return await fetchPaginatedList(Runtime, bookId, {
+    label: 'Published chapter list',
+    endpoint: '/api/author/chapter/chapter_list/v1',
+    listKey: 'item_list'
+  });
 }
 
 async function verifyAccount(Runtime, expectedAccount) {
@@ -343,50 +496,40 @@ async function verifySavedArticle(Runtime, bookId, row, chapter) {
   return stats;
 }
 
-async function repairUnexpectedBlankDraft(Runtime, bookId, row, chapter) {
+// The draft-list record can become visible before edit_article exposes the
+// newly persisted title/body.  Treat that short propagation window as a
+// retryable readback condition, while retaining the same exact title/body/
+// paragraph comparison once the platform settles.
+async function verifySavedArticleEventually(Runtime, bookId, row, chapter, timeoutMs = 45000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastError;
+  while (Date.now() < deadline) {
+    try {
+      return await verifySavedArticle(Runtime, bookId, row, chapter);
+    } catch (error) {
+      lastError = error;
+      await sleep(1500);
+    }
+  }
+  throw lastError || new Error(`Timed out waiting for platform readback: ${fullChapterTitle(chapter)}`);
+}
+
+async function repairUnexpectedBlankDraft(client, bookId, row, chapter) {
+  const { Runtime } = client;
   const before = await fetchDraftArticle(Runtime, bookId, row.item_id);
   if (before.title || compactText(before.text) || before.nonEmptyParagraphs) {
     throw new Error(`Unexpected new draft is not blank and cannot be repaired safely: item=${row.item_id}`);
   }
-  const expectedTitle = fullChapterTitle(chapter);
-  const payload = await evalv(Runtime, `(async () => {
-    const editUrl = '/api/author/edit_article/v0/?book_id=${bookId}&item_id=${row.item_id}&from_source=0';
-    const editRes = await fetch(editUrl, { credentials: 'include' });
-    const editJson = await editRes.json();
-    if (!editJson || editJson.code !== 0) return { code: editJson && editJson.code, message: editJson && editJson.message, stage: 'edit_article' };
-    const article = editJson.data || {};
-    const volumeRes = await fetch('/app/book/volume_list/v0/?book_id=${bookId}&order=1', { credentials: 'include' });
-    const volumeJson = await volumeRes.json();
-    const volume = (volumeJson && volumeJson.data && volumeJson.data.volume_list || [])[0] || {};
-    const form = new URLSearchParams();
-    const fields = {
-      book_id: ${JSON.stringify(String(bookId))},
-      item_id: ${JSON.stringify(String(row.item_id))},
-      title: ${JSON.stringify(expectedTitle)},
-      content: ${JSON.stringify(bodyToHtml(chapter.body))},
-      volume_id: String(article.volume_id || volume.volume_id || ''),
-      volume_name: String(article.volume_name || volume.volume_name || ''),
-      device_platform: 'pc',
-      item_version: String(article.latest_version || article.item_version || '')
-    };
-    for (const [key, value] of Object.entries(fields)) form.set(key, value);
-    const saveRes = await fetch('/app/book/cover_article/v0/', {
-      method: 'POST', credentials: 'include',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-      body: form.toString()
-    });
-    const text = await saveRes.text();
-    let json;
-    try { json = JSON.parse(text); } catch (_) { json = { code: -99999, body: text.slice(0, 1000) }; }
-    return { ...json, stage: 'cover_article', volume_id: fields.volume_id };
-  })()`);
-  if (!payload || payload.code !== 0) {
-    throw new Error(`Blank-draft repair failed for item=${row.item_id}: ${JSON.stringify(payload)}`);
-  }
+  // The old internal API fallback intermittently returns 403 even after the
+  // writer page has authenticated.  Reuse the normal editor UI instead: it
+  // keeps the same browser session, honors the platform's current CSRF flow,
+  // and is preceded by the strict blank-only check above.
+  const href = `https://fanqienovel.com/main/writer/${bookId}/publish/${row.item_id}?enter_from=newdraft`;
+  await repairDraft(client, href, chapter);
   const after = await fetchDraftList(Runtime, bookId);
   const saved = (after.draft_list || []).find(item => String(item.item_id) === String(row.item_id));
   if (!saved) throw new Error(`Blank-draft repair removed item unexpectedly: ${row.item_id}`);
-  await verifySavedArticle(Runtime, bookId, saved, chapter);
+  await verifySavedArticleEventually(Runtime, bookId, saved, chapter);
   return saved;
 }
 
@@ -486,6 +629,51 @@ async function clickSaveDraft(Runtime, Input, wait = 3500) {
     if (await clickText(Runtime, Input, label, { wait })) return true;
   }
   return false;
+}
+
+// Writer pages currently expose “存草稿” on the editor itself.  Going through
+// “下一步” first is only a fallback: on some blank-draft recovery routes it
+// enters a different validation screen and discards the just-filled fields.
+async function saveEditorDraft(Runtime, Input, context) {
+  await sleep(700);
+  if (await clickSaveDraft(Runtime, Input, 1800)) {
+    await waitFor(Runtime, `document.body.innerText.includes('${U.saved}')`, 30000, 'saved status');
+    return 'direct';
+  }
+  await waitFor(Runtime, `([...document.querySelectorAll('button,[role="button"],a')]
+    .some(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
+      && !el.disabled
+      && /\\u4e0b\\u4e00\\u6b65/.test((el.innerText || el.textContent || '').trim())))`, 30000, 'next button');
+  if (!await clickText(Runtime, Input, U.next, { wait: 1500 })) {
+    throw new Error(`Next button not found while ${context}`);
+  }
+  await saveDraft(Runtime, Input);
+  return 'next';
+}
+
+async function saveRepairedEditorDraft(Runtime, Input) {
+  await waitFor(Runtime, `([...document.querySelectorAll('button,[role="button"],a')]
+    .some(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
+      && !el.disabled
+      && /\\u4e0b\\u4e00\\u6b65/.test((el.innerText || el.textContent || '').trim())))`, 30000, 'next button');
+  if (!await clickText(Runtime, Input, U.next, { wait: 1500 })) {
+    throw new Error('Next button not found while repairing draft');
+  }
+  try {
+    await saveDraft(Runtime, Input);
+  } catch (error) {
+    const state = await evalv(Runtime, `(() => {
+      const visible = el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+      return {
+        href: location.href,
+        actions: [...document.querySelectorAll('button,[role="button"],a,label')]
+          .filter(visible).map(el => (el.innerText || el.textContent || '').trim()).filter(Boolean).slice(-30),
+        dialogs: [...document.querySelectorAll('.arco-modal,[role="dialog"],.arco-drawer')]
+          .filter(visible).map(el => (el.innerText || '').trim()).filter(Boolean).slice(0, 5)
+      };
+    })()`);
+    throw new Error(`${error.message}; post-next state=${JSON.stringify(state)}`);
+  }
 }
 
 async function pageText(Runtime, limit = 8000) {
@@ -721,17 +909,7 @@ async function createDraft(client, chapter) {
     el.blur();
     return true;
   })()`);
-  await waitFor(Runtime, `([...document.querySelectorAll('button,[role="button"],a')]
-    .some(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
-      && !el.disabled
-      && /\\u4e0b\\u4e00\\u6b65/.test((el.innerText || el.textContent || '').trim())))`, 30000, 'next button');
-  await clickText(Runtime, Input, U.next, { wait: 1500 });
-  await waitFor(Runtime, `([...document.querySelectorAll('button,[role="button"],a')]
-    .some(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
-      && !el.disabled
-      && /\\u5b58\\u8349\\u7a3f|\\u4fdd\\u5b58\\u8349\\u7a3f/.test((el.innerText || el.textContent || '').trim())))`, 30000, 'save draft button');
-  if (!await clickSaveDraft(Runtime, Input, 2500)) throw new Error('Save draft button not found');
-  await waitFor(Runtime, `document.body.innerText.includes('${U.saved}')`, 30000, 'saved status');
+  await saveEditorDraft(Runtime, Input, 'creating draft');
 }
 
 async function waitForDraftSaved(Runtime, bookId, chapter) {
@@ -785,7 +963,7 @@ async function verifyRequestedDrafts(Runtime, bookId, chapters, options = {}) {
     if (row.title !== expected) {
       throw new Error(`Platform title conflict for chapter ${chapter.padded}: expected=${expected}, actual=${row.title}`);
     }
-    await verifySavedArticle(Runtime, bookId, row, chapter);
+    await verifySavedArticleEventually(Runtime, bookId, row, chapter);
     if (!options.quiet) console.log(`VERIFIED_${row.platformState.toUpperCase()} ${expected}`);
   }
   if (missing.length && !options.allowMissing) {
@@ -812,12 +990,19 @@ async function createDraftWithRecovery(client, bookId, bookDir, chapter, attempt
         })()`);
         if (!href) await sleep(1000);
       }
-      if (!href) throw new Error('Cannot locate new draft button');
+      // The current writer console can hydrate the button text after its link
+      // node, leaving a brief (and sometimes persistent) no-href state for
+      // CDP.  The publish route is stable and still keeps the rest of this
+      // idempotent upload path (including pre/post API verification) intact.
+      if (!href) {
+        href = `https://fanqienovel.com/main/writer/${bookId}/publish/?enter_from=newdraft`;
+        console.warn(`FALLBACK_NEW_DRAFT_ROUTE ${expected}`);
+      }
       await navigate(Page, href);
       await sleep(2500);
       await createDraft(client, chapter);
       const row = await waitForDraftSaved(Runtime, bookId, chapter);
-      await verifySavedArticle(Runtime, bookId, row, chapter);
+      await verifySavedArticleEventually(Runtime, bookId, row, chapter);
       console.log(`DRAFT ${expected}`);
       return row;
     } catch (error) {
@@ -830,7 +1015,7 @@ async function createDraftWithRecovery(client, bookId, bookDir, chapter, attempt
       }
       const exact = (after.draft_list || []).filter(row => (row.title || row.chapter_title || '') === expected);
       if (exact.length === 1) {
-        await verifySavedArticle(Runtime, bookId, exact[0], chapter);
+        await verifySavedArticleEventually(Runtime, bookId, exact[0], chapter);
         console.log(`RECOVERED ${expected}`);
         return exact[0];
       }
@@ -838,7 +1023,7 @@ async function createDraftWithRecovery(client, bookId, bookDir, chapter, attempt
       const newRows = (after.draft_list || []).filter(row => !beforeIds.has(String(row.item_id)));
       if (newRows.length) {
         if (newRows.length === 1) {
-          const repaired = await repairUnexpectedBlankDraft(Runtime, bookId, newRows[0], chapter);
+          const repaired = await repairUnexpectedBlankDraft(client, bookId, newRows[0], chapter);
           console.log(`RECOVERED_PARTIAL ${expected}`);
           return repaired;
         }
@@ -1026,19 +1211,16 @@ async function repairDraft(client, href, chapter) {
   await waitFor(Runtime, `!!document.querySelector('.ProseMirror,[contenteditable="true"]')`, 30000, 'chapter editor');
   await fillChapterMeta(Runtime, Input, chapter);
   const chars = await fillChapterBody(Runtime, Input, chapter);
-  await waitFor(Runtime, `([...document.querySelectorAll('button,[role="button"],a')]
-    .some(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
-      && !el.disabled
-      && /\\u4e0b\\u4e00\\u6b65/.test((el.innerText || el.textContent || '').trim())))`, 30000, 'next button');
-  if (!await clickText(Runtime, Input, U.next, { wait: 1500 })) throw new Error('Next button not found while repairing draft');
-  await saveDraft(Runtime, Input);
+  await saveRepairedEditorDraft(Runtime, Input);
   console.log(`REPAIR ${fullChapterTitle(chapter)} ${chars}`);
 }
 
-async function commandRepair(bookDir, bookId, chapters, port) {
+async function commandRepair(bookDir, bookId, chapters, port, options = {}) {
   const client = await connect(port);
   const { Runtime, Page } = client;
   try {
+    await navigate(Page, draftBoxUrl(bookId, bookDir, 2));
+    await verifyAccount(Runtime, options.expectedAccount);
     const rows = await collectDraftRows(Runtime, Page, bookId, bookDir);
     for (const chapter of chapters) {
       const row = rows.get(chapter.padded);
@@ -1047,18 +1229,74 @@ async function commandRepair(bookDir, bookId, chapters, port) {
         continue;
       }
       await repairDraft(client, row.href, chapter);
+      await verifyRequestedDrafts(Runtime, bookId, [chapter]);
     }
   } finally {
     await client.close();
   }
 }
 
-async function commandRepairHref(chapters, port, href) {
+async function commandRepairHref(bookId, chapters, port, href, options = {}) {
   if (!href) throw new Error('--href is required for repair-href');
   if (chapters.length !== 1) throw new Error('repair-href requires exactly one chapter; set --from and --to to the same number');
   const client = await connect(port);
   try {
+    // Establish a trusted Fanqie origin before the account API check; an edit
+    // href is user-supplied and must not be our first navigation.
+    await navigate(client.Page, 'https://fanqienovel.com/writer/zone');
+    await verifyAccount(client.Runtime, options.expectedAccount);
     await repairDraft(client, href, chapters[0]);
+    await verifyRequestedDrafts(client.Runtime, bookId, chapters);
+  } finally {
+    await client.close();
+  }
+}
+
+async function commandRepairBlank(bookId, chapters, port, itemId, options = {}) {
+  if (!itemId) throw new Error('--item-id is required for repair-blank');
+  if (chapters.length !== 1) throw new Error('repair-blank requires exactly one chapter');
+  const client = await connect(port);
+  try {
+    await navigate(client.Page, 'https://fanqienovel.com/writer/zone');
+    await verifyAccount(client.Runtime, options.expectedAccount);
+    const drafts = await fetchDraftList(client.Runtime, bookId);
+    const row = (drafts.draft_list || []).find(item => String(item.item_id) === String(itemId));
+    if (!row) throw new Error(`Blank draft item not found: ${itemId}`);
+    const saved = await repairUnexpectedBlankDraft(client, bookId, row, chapters[0]);
+    console.log(`REPAIRED_BLANK ${fullChapterTitle(chapters[0])} item=${saved.item_id}`);
+  } finally {
+    await client.close();
+  }
+}
+
+function inventoryRows(rows, state) {
+  return rows
+    .map(row => {
+      const title = String(row.title || row.chapter_title || '').trim();
+      return { state, no: chapterNumber(title), title, itemId: row.item_id || row.id || '' };
+    })
+    .sort((left, right) => left.no - right.no || left.title.localeCompare(right.title, 'zh-Hans-CN'));
+}
+
+// Read-only complete platform inventory.  This is intentionally backed by the
+// API pagination helpers rather than the visible table, which may only render
+// one page and therefore cannot safely answer "what is missing?".
+async function commandInventory(bookId, port, options = {}) {
+  const client = await connect(port);
+  try {
+    await navigate(client.Page, 'https://fanqienovel.com/writer/zone');
+    await verifyAccount(client.Runtime, options.expectedAccount);
+    const [draftResult, publishedResult] = await Promise.all([
+      fetchDraftList(client.Runtime, bookId),
+      fetchPublishedList(client.Runtime, bookId)
+    ]);
+    const drafts = inventoryRows(draftResult.draft_list || [], 'DRAFT');
+    const published = inventoryRows(publishedResult.item_list || [], 'PUBLISHED');
+    for (const row of [...published, ...drafts]) {
+      const no = row.no ? String(row.no).padStart(3, '0') : '---';
+      console.log(`${row.state} ${no} ${row.title}${row.itemId ? ` item=${row.itemId}` : ''}`);
+    }
+    console.log(`INVENTORY_OK drafts=${drafts.length} published=${published.length}`);
   } finally {
     await client.close();
   }
@@ -1183,7 +1421,6 @@ async function main() {
     return;
   }
   const root = path.resolve(argValue(args, '--root', DEFAULT_ROOT));
-  const bookDir = resolveBookDir(argValue(args, '--book'), root);
   const from = Number(argValue(args, '--from', '1'));
   const to = Number(argValue(args, '--to', String(Number.MAX_SAFE_INTEGER)));
   const port = Number(argValue(args, '--port', String(DEFAULT_PORT)));
@@ -1194,16 +1431,27 @@ async function main() {
   const expectedAccount = argValue(args, '--expected-account', (PORT_ACCOUNT_MAP[port] || {}).expected || '');
   const attempts = Number(argValue(args, '--attempts', '3'));
   const href = argValue(args, '--href', '');
-  const chapters = loadChapters(bookDir, from, to);
+  const chapterDir = argValue(args, '--chapter-dir', '');
+  const minChars = nonNegativeInteger(argValue(args, '--min-chars', String(DEFAULT_MIN_CHARS)), '--min-chars');
+
+  if (command === 'inventory' || command === 'status') {
+    if (!bookId) throw new Error('--book-id is required for inventory');
+    return commandInventory(bookId, port, { expectedAccount });
+  }
+
+  const bookDir = resolveBookDir(argValue(args, '--book'), root);
+  const chapters = loadChapters(bookDir, from, to, chapterDir);
   if (!chapters.length) throw new Error(`No chapters found in ${bookDir}`);
-  validateLocalChapters(chapters);
+  const enforceMinimum = ['scan', 'drafts', 'verify', 'all'].includes(command);
+  validateLocalChapters(chapters, { minChars: enforceMinimum ? minChars : 0 });
 
   if (command === 'scan') return commandScan(chapters);
-  if (!bookId) throw new Error('--book-id is required for drafts/publish/all');
+  if (!bookId) throw new Error('--book-id is required for drafts, verify, repair, repair-href, repair-blank, publish, and all');
   if (command === 'drafts') return commandDrafts(bookDir, bookId, chapters, port, { expectedAccount, attempts });
   if (command === 'verify') return commandVerify(bookId, chapters, port, { expectedAccount });
-  if (command === 'repair') return commandRepair(bookDir, bookId, chapters, port);
-  if (command === 'repair-href') return commandRepairHref(chapters, port, href);
+  if (command === 'repair') return commandRepair(bookDir, bookId, chapters, port, { expectedAccount });
+  if (command === 'repair-href') return commandRepairHref(bookId, chapters, port, href, { expectedAccount });
+  if (command === 'repair-blank') return commandRepairBlank(bookId, chapters, port, argValue(args, '--item-id', ''), { expectedAccount });
   if (command === 'publish') return commandPublishApi(bookDir, bookId, from, to, port, { aiUse, account, expectedAccount, limit });
   if (command === 'publish-cdp') return commandPublish(bookDir, bookId, chapters, port, { aiUse, limit });
   if (command === 'all') {
