@@ -1990,31 +1990,29 @@
     },
     {
       "path": ".quality_runtime/formal/CH068_第068章_她先把门打开一条缝.md",
-      "blob_sha": "85e353e883acabbda482752be9140d0a790788d4",
-      "total_body_chars": 2428,
-      "total_paragraphs": 66,
-      "single_sentence_paragraph_count": 26,
-      "single_sentence_paragraph_ratio": 0.3939,
-      "short_paragraph_le20_count": 35,
-      "short_paragraph_le20_ratio": 0.5303,
-      "short_paragraph_le40_count": 47,
-      "short_paragraph_le40_ratio": 0.7121,
-      "dialogue_only_paragraph_count": 13,
-      "dialogue_only_paragraph_ratio": 0.197,
-      "dialogue_led_paragraph_count": 22,
-      "dialogue_led_paragraph_ratio": 0.3333,
-      "dialogue_character_ratio": 0.1569,
-      "non_dialogue_narrative_character_ratio": 0.8431,
-      "max_dialogue_only_run": 3,
-      "max_short_paragraph_le20_run": 5,
-      "max_short_paragraph_le40_run": 17,
-      "max_sawtooth_run": 17,
+      "blob_sha": "7975411dc8d16c9834c0a8c29bf4bd184d3cddd0",
+      "total_body_chars": 2000,
+      "total_paragraphs": 33,
+      "single_sentence_paragraph_count": 7,
+      "single_sentence_paragraph_ratio": 0.2121,
+      "short_paragraph_le20_count": 7,
+      "short_paragraph_le20_ratio": 0.2121,
+      "short_paragraph_le40_count": 12,
+      "short_paragraph_le40_ratio": 0.3636,
+      "dialogue_only_paragraph_count": 1,
+      "dialogue_only_paragraph_ratio": 0.0303,
+      "dialogue_led_paragraph_count": 2,
+      "dialogue_led_paragraph_ratio": 0.0606,
+      "dialogue_character_ratio": 0.056,
+      "non_dialogue_narrative_character_ratio": 0.944,
+      "max_dialogue_only_run": 1,
+      "max_short_paragraph_le20_run": 2,
+      "max_short_paragraph_le40_run": 2,
+      "max_sawtooth_run": 2,
       "chapter": "CH068",
-      "result": "MANDATORY_BODY_REVIEW",
+      "result": "PASS_NUMERIC",
       "absolute_failures": [],
-      "reference_band_review_hits": [
-        "REFERENCE_DRIFT:max_sawtooth_run"
-      ]
+      "reference_band_review_hits": []
     },
     {
       "path": ".quality_runtime/formal/CH069_第069章_一把钥匙_两边都能转.md",
@@ -2176,9 +2174,7 @@
   "core_metrics": {
     "target_chapter_count": 74,
     "absolute_failures": [],
-    "mandatory_body_review_chapters": [
-      "CH068"
-    ],
+    "mandatory_body_review_chapters": [],
     "missing_metric_chapters": [],
     "reference_band": {
       "dialogue_character_ratio_max": 0.4347,
@@ -2187,10 +2183,8 @@
       "max_sawtooth_run_max": 8.0
     }
   },
-  "hit_locations": [
-    ".quality_runtime/formal/CH068_第068章_她先把门打开一条缝.md"
-  ],
+  "hit_locations": [],
   "stale_blob_chapters": [],
-  "post_fix_recalculation": "REQUIRED",
-  "p0_manifest_result": "MANDATORY_BODY_REVIEW"
+  "post_fix_recalculation": "NOT_REQUIRED",
+  "p0_manifest_result": "PASS"
 }
