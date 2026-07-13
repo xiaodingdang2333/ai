@@ -36,6 +36,14 @@ def pct(vals: list[int], p: float) -> int:
     return round(xs[lo] * (1 - frac) + xs[hi] * frac)
 
 
+def bucket(rows: list[dict], pred) -> list[dict]:
+    return [
+        {"chapter": r["chapter"], "body_chars": r["body_chars"], "blob_sha": r["blob_sha"]}
+        for r in sorted(rows, key=lambda x: (x["body_chars"], x["number"]))
+        if pred(r["body_chars"])
+    ]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--book-dir", required=True)
@@ -83,6 +91,7 @@ def main():
             "normalized_copy_blob_sha": git_blob_sha(q, root),
             "body_chars": body_chars,
             "first_line": first,
+            "has_markdown_title": first.startswith(f"# 第{n:03d}章 "),
             "body_sha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
             "empty_body": body_chars == 0,
         })
@@ -95,8 +104,11 @@ def main():
                 index[int(m.group(1))] = m.group(2).strip()
     index_missing = []
     title_mismatch = []
+    missing_markdown_titles = []
     for r in rows:
         n = r["number"]
+        if not r["has_markdown_title"]:
+            missing_markdown_titles.append(r["chapter"])
         expected = index.get(n)
         if expected is None:
             index_missing.append(r["chapter"])
@@ -109,16 +121,20 @@ def main():
         by_body.setdefault(r["body_sha256"], []).append(r["chapter"])
     exact_duplicate_groups = [v for v in by_body.values() if len(v) > 1]
     vals = [r["body_chars"] for r in rows]
+    blob_copy_mismatches = [r["chapter"] for r in rows if r["blob_sha"] != r["normalized_copy_blob_sha"]]
+    empty = [r["chapter"] for r in rows if r["empty_body"]]
     payload = {
-        "gate": "LEGACY_BOOK_PREPARE_AND_DIAGNOSTIC_V1",
+        "gate": "LEGACY_BOOK_PREPARE_AND_DIAGNOSTIC_V2",
         "scope": {"book_dir": a.book_dir, "from": a.from_chapter, "to": a.to_chapter},
         "chapters": rows,
         "missing_chapters": missing,
         "duplicate_number_files": duplicates,
         "index_missing_chapters": index_missing,
+        "missing_markdown_titles": missing_markdown_titles,
         "title_index_mismatches": title_mismatch,
         "exact_duplicate_body_groups": exact_duplicate_groups,
-        "blob_copy_mismatches": [r["chapter"] for r in rows if r["blob_sha"] != r["normalized_copy_blob_sha"]],
+        "blob_copy_mismatches": blob_copy_mismatches,
+        "empty_body_chapters": empty,
         "length_profile": {
             "count_method": "NON_WHITESPACE_BODY_CHARACTERS",
             "valid_chapter_count": len(vals),
@@ -133,12 +149,20 @@ def main():
             "early_10_mean": round(mean(vals[:10]), 2) if len(vals) >= 10 else None,
             "early_30_mean": round(mean(vals[:30]), 2) if len(vals) >= 30 else None,
         },
-        "structural_result": "PASS" if not (missing or duplicates or index_missing or exact_duplicate_groups or [r for r in rows if r["empty_body"]]) else "FAIL",
+        "length_threshold_buckets": {
+            "below_1400": bucket(rows, lambda n: n < 1400),
+            "below_1800": bucket(rows, lambda n: n < 1800),
+            "below_2200": bucket(rows, lambda n: n < 2200),
+            "above_3200": bucket(rows, lambda n: n > 3200),
+            "above_3600": bucket(rows, lambda n: n > 3600),
+        },
     }
+    blockers = [missing, duplicates, index_missing, missing_markdown_titles, title_mismatch, exact_duplicate_groups, blob_copy_mismatches, empty]
+    payload["structural_result"] = "PASS" if not any(blockers) else "FAIL"
     op = root / a.output_json
     op.parent.mkdir(parents=True, exist_ok=True)
     op.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps(payload["length_profile"], ensure_ascii=False))
+    print(json.dumps({"length_profile": payload["length_profile"], "length_threshold_buckets": payload["length_threshold_buckets"]}, ensure_ascii=False))
     if payload["structural_result"] != "PASS":
         raise SystemExit("structural diagnostic failed")
 
