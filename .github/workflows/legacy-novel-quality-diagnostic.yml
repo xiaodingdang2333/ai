@@ -1,0 +1,59 @@
+name: Legacy Novel Quality Diagnostic
+on:
+  push:
+    branches:
+      - chatgpt/reaudit-liusui-20260713
+    paths:
+      - '.github/workflows/legacy-novel-quality-diagnostic.yml'
+      - 'quality_runtime/**'
+      - 'scripts/p0_dialogue_visual_hard_gate_v2.py'
+      - 'scripts/validate_ready_promotion_v22.py'
+      - 'quality_triggers/**'
+permissions:
+  contents: write
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Prepare exact-current-blob formal view
+        run: |
+          python3 quality_runtime/prepare_legacy_gate.py \
+            --book-dir 'txt/重生六岁，我带空间抢回军区大院' \
+            --from-chapter 1 --to-chapter 74 \
+            --formal-out '.quality_runtime/formal' \
+            --output-json 'txt/重生六岁，我带空间抢回军区大院/追踪/机器门禁/DIAGNOSTIC_CH001_CH074.json'
+      - name: Run canonical P0 numeric gate
+        id: p0
+        continue-on-error: true
+        run: |
+          python3 scripts/p0_dialogue_visual_hard_gate_v2.py \
+            --formal-dir '.quality_runtime/formal' \
+            --reference-from 1 --reference-to 10 \
+            --target-from 1 --target-to 74 \
+            --output-json 'txt/重生六岁，我带空间抢回军区大院/追踪/机器门禁/P0_DIALOGUE_VISUAL_CH001_CH074.json'
+      - name: Record diagnostic status
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path('txt/重生六岁，我带空间抢回军区大院/追踪/机器门禁/DIAGNOSTIC_RUN_STATUS.json')
+          p.parent.mkdir(parents=True, exist_ok=True)
+          p.write_text(json.dumps({
+            'workflow': 'Legacy Novel Quality Diagnostic',
+            'commit': os.environ['GITHUB_SHA'],
+            'p0_step_outcome': '${{ steps.p0.outcome }}',
+            'mode': 'DIAGNOSTIC_ONLY_NO_READY_PROMOTION'
+          }, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          PY
+      - name: Commit diagnostic artifacts
+        run: |
+          git config user.name 'novel-quality-bot'
+          git config user.email 'novel-quality-bot@users.noreply.github.com'
+          git add 'txt/重生六岁，我带空间抢回军区大院/追踪/机器门禁/'
+          if ! git diff --cached --quiet; then
+            git commit -m '生成第001-074章机器门禁诊断 [skip ci]'
+            git push
+          fi
