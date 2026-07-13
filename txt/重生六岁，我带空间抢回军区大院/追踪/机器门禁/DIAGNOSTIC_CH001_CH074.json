@@ -1,5 +1,5 @@
 {
-  "gate": "LEGACY_BOOK_PREPARE_AND_DIAGNOSTIC_V1",
+  "gate": "LEGACY_BOOK_PREPARE_AND_DIAGNOSTIC_V2",
   "scope": {
     "book_dir": "txt/重生六岁，我带空间抢回军区大院",
     "from": 1,
@@ -15,6 +15,7 @@
       "normalized_copy_blob_sha": "0220cce7663dd9db7fb71e44ad5732b161066973",
       "body_chars": 2121,
       "first_line": "# 第001章 她被顶替了",
+      "has_markdown_title": true,
       "body_sha256": "75eba29c8ebaeb0a06dd1e3b3fdea299f3c9ba0933f337b78ef9ce0f11c57dd3",
       "empty_body": false
     },
@@ -27,6 +28,7 @@
       "normalized_copy_blob_sha": "e4b22e0b3f822d316e074dff324cc08e0bf93a10",
       "body_chars": 2938,
       "first_line": "# 第002章 追上秦家的车",
+      "has_markdown_title": true,
       "body_sha256": "876f4aa12049e6c8480a0d1b0bbc9201bedb751fe5096b4200580607617e867f",
       "empty_body": false
     },
@@ -39,6 +41,7 @@
       "normalized_copy_blob_sha": "e9b305798cc5c7b4cccdd12fbf3cf93ebd30633f",
       "body_chars": 2302,
       "first_line": "# 第003章 当场验身份",
+      "has_markdown_title": true,
       "body_sha256": "005449c3f86df8311eeaed08845f35a1c68b67729412ad420faf911cb2ca17f8",
       "empty_body": false
     },
@@ -51,6 +54,7 @@
       "normalized_copy_blob_sha": "15aaa42909e3297291d70a0e4791248b7f05f630",
       "body_chars": 2221,
       "first_line": "# 第004章 养育费没要到，三姑来抢人",
+      "has_markdown_title": true,
       "body_sha256": "7d3960709889c8ed63d5484c5f62b5ff0df4ee56a2ccdc19fd81f065557bd4c3",
       "empty_body": false
     },
@@ -63,6 +67,7 @@
       "normalized_copy_blob_sha": "5d3813d141f1fb7b4f53f924ec74697b2d7f97b0",
       "body_chars": 2561,
       "first_line": "# 第005章 公安带人，空间提前开启",
+      "has_markdown_title": true,
       "body_sha256": "9d9dc4874fd528520d1d80271ad81b18c04f955d9c9df8768008fc0947f411a3",
       "empty_body": false
     },
@@ -75,6 +80,7 @@
       "normalized_copy_blob_sha": "71a7466665b2aad08a86c0da75792b13cd0509ad",
       "body_chars": 2349,
       "first_line": "# 第006章 秦家收养她，病房里打脸",
+      "has_markdown_title": true,
       "body_sha256": "55ec3773fe8a3f7c58b16b8ad5cd69a96b4f8923cc47412752e41963b7f505d4",
       "empty_body": false
     },
@@ -87,6 +93,7 @@
       "normalized_copy_blob_sha": "6341e92f9fcb6ad44917d080d25cab4727ad5094",
       "body_chars": 2372,
       "first_line": "# 第007章 进军区大院，她不是晦气",
+      "has_markdown_title": true,
       "body_sha256": "578a4e623a1bb541724922cf0b15e95d4c9c70900b3b934970f1d0ce8bc37999",
       "empty_body": false
     },
@@ -99,6 +106,7 @@
       "normalized_copy_blob_sha": "72aeb34bc4400ec1875e4831bc806adc221887cb",
       "body_chars": 2599,
       "first_line": "# 第008章 姜红红哭上门，她入学测试过关",
+      "has_markdown_title": true,
       "body_sha256": "7f51e63cf711407c939807467ff3ffe0b781216da24ef9e51e33d07f6176520a",
       "empty_body": false
     },
@@ -111,6 +119,7 @@
       "normalized_copy_blob_sha": "82c2dd214855495d3a05d8c8e48609f865d40618",
       "body_chars": 1972,
       "first_line": "# 第009章 第一天上学，姜红红又来了",
+      "has_markdown_title": true,
       "body_sha256": "9bd48dc7f0ea2d5c2fc0f4b632af346e19587f5ebfe8eb1c55ad0db4953878bc",
       "empty_body": false
     },
@@ -123,6 +132,7 @@
       "normalized_copy_blob_sha": "61341c787a5aab5a5923f4b08fc655e4aee99fb1",
       "body_chars": 2544,
       "first_line": "# 第010章 书包被划，秦司令撑腰",
+      "has_markdown_title": true,
       "body_sha256": "2747dbfa71dbf1b7e439a69fc62749957bd38ccf4173818c42cac311666b8eeb",
       "empty_body": false
     },
@@ -135,6 +145,7 @@
       "normalized_copy_blob_sha": "e46bc66d085531d40852fcb70b5cb44742d0855c",
       "body_chars": 2657,
       "first_line": "# 第011章 她没有偷，姜红红藏了肉票",
+      "has_markdown_title": true,
       "body_sha256": "8635c3179fd1c1d36df1d5fdc0085bb751afd135910ac54b47581be85ed08f97",
       "empty_body": false
     },
@@ -147,6 +158,7 @@
       "normalized_copy_blob_sha": "29c075f06d6a9a32f3c9743c174713c343cc3f59",
       "body_chars": 2415,
       "first_line": "# 第012章 秦老太太低头，肉票比眼泪硬",
+      "has_markdown_title": true,
       "body_sha256": "d8026b6609c92bb4967fa0a9a6a597f0d752fec9cac4661f39003d98f23554e7",
       "empty_body": false
     },
@@ -159,6 +171,7 @@
       "normalized_copy_blob_sha": "a9592a519fdf7ef289ba86172822b31d27e7e180",
       "body_chars": 2482,
       "first_line": "# 第013章 妇联门口，她把哭声按进规矩里",
+      "has_markdown_title": true,
       "body_sha256": "6e715c95f21d955f18c90ebbd010b739c2fdf3c1d38b4fb70d6b6b46d0be93b5",
       "empty_body": false
     },
@@ -171,6 +184,7 @@
       "normalized_copy_blob_sha": "38be71ad933568ccdb725044b85a68b34e651c6f",
       "body_chars": 2529,
       "first_line": "# 第014章 校长室亮规矩，她别想跪出特权",
+      "has_markdown_title": true,
       "body_sha256": "1352f042175ebf2c175b9a66f7a415f1c786a4e80c893ee61df25a0ee178ded5",
       "empty_body": false
     },
@@ -183,6 +197,7 @@
       "normalized_copy_blob_sha": "a82e18f30b6f637cdeb6ed6ba8215762e3284542",
       "body_chars": 2953,
       "first_line": "# 第015章 单元卷发下来，她故意少拿三分",
+      "has_markdown_title": true,
       "body_sha256": "3e0fdd4648e7aae73851915d1007ab6cc0a83d333e35735885b63ce31c4d7f1e",
       "empty_body": false
     },
@@ -195,6 +210,7 @@
       "normalized_copy_blob_sha": "9b2a85dc8d5df8790fe050c6f0775fb940eabb2d",
       "body_chars": 2076,
       "first_line": "# 第016章 空间开小课桌，第一名不是白来的",
+      "has_markdown_title": true,
       "body_sha256": "0036f8fda4a8ca15afa75869bf69b7d2208871f3a9ad3cb00e0387961a056583",
       "empty_body": false
     },
@@ -207,6 +223,7 @@
       "normalized_copy_blob_sha": "b5119399b0e6703409c36ce23331b02230acd2ad",
       "body_chars": 2341,
       "first_line": "# 第017章 收养表盖章前，姜家堂伯伸手了",
+      "has_markdown_title": true,
       "body_sha256": "071a9558463a60bbdcddc9df30f2ee445b43ecc0bd59f6c8db45c8114a170ded",
       "empty_body": false
     },
@@ -219,6 +236,7 @@
       "normalized_copy_blob_sha": "16a2835ba97c6e949278934487c5712d92053ae1",
       "body_chars": 2421,
       "first_line": "# 第018章 烈士怀表一亮，她亲口选秦家",
+      "has_markdown_title": true,
       "body_sha256": "5d9ee968fbc5202472bf47987465e9e8aed977fd4878493ad236f6190038a73e",
       "empty_body": false
     },
@@ -231,6 +249,7 @@
       "normalized_copy_blob_sha": "8ce1a0228f370520a614a876dbd52197f1188bca",
       "body_chars": 2443,
       "first_line": "# 第019章 姜家人堵门，秦家把账本摊开",
+      "has_markdown_title": true,
       "body_sha256": "77c60784d7e9d31c1ae3aecaf42128c30215ae7858fc17ef1cbb8d88aa76e72e",
       "empty_body": false
     },
@@ -243,6 +262,7 @@
       "normalized_copy_blob_sha": "af7c5f85c9bbfe8ccab537f847d26335f064f10f",
       "body_chars": 2483,
       "first_line": "# 第020章 她不替坏人哭，姜家亲戚反被查",
+      "has_markdown_title": true,
       "body_sha256": "409810dce9126b5040a82f34facd6a87f741e11b2836f83dd693fd3e3ad57c54",
       "empty_body": false
     },
@@ -255,6 +275,7 @@
       "normalized_copy_blob_sha": "1f35b541fca3197d7553514ad13728018209c8b8",
       "body_chars": 2108,
       "first_line": "# 第021章 三道题换一盏灯，大院孩子围过来",
+      "has_markdown_title": true,
       "body_sha256": "478ca8fd13a20647b31bda9a972c017c3f1cb50e4e4c36426cc6ef55b952626e",
       "empty_body": false
     },
@@ -267,6 +288,7 @@
       "normalized_copy_blob_sha": "47adff9c6bd1d441479feda24a7e02b8a50b3917",
       "body_chars": 1733,
       "first_line": "# 第022章 公安信压在桌上，旧人牙子露了尾巴",
+      "has_markdown_title": true,
       "body_sha256": "0c05cc4076c2bc16e399d786c6185e39aad63dd6dc4a1f3585dddf0913fd5fe3",
       "empty_body": false
     },
@@ -279,6 +301,7 @@
       "normalized_copy_blob_sha": "1cc311180af7639654a04d5a6570ef6e47c31b35",
       "body_chars": 1851,
       "first_line": "# 第023章 金牙女人的红绳，牵出柳树沟旧账",
+      "has_markdown_title": true,
       "body_sha256": "31376b45e6e8ff564a91708a6227b8dc1e8b988090a037a2fc341a8387854fde",
       "empty_body": false
     },
@@ -291,6 +314,7 @@
       "normalized_copy_blob_sha": "239a68de1250067611fa6b3428d6bc4362b0fc74",
       "body_chars": 1531,
       "first_line": "# 第024章 她画出歪脖槐，公安顺路追下去",
+      "has_markdown_title": true,
       "body_sha256": "7933cf255cfcd3eb0fbca0b1d143198d413214c3cb3f5316e1a0bb47380516a7",
       "empty_body": false
     },
@@ -303,6 +327,7 @@
       "normalized_copy_blob_sha": "877ae46aadad1995af61f0404c6232235194be1e",
       "body_chars": 2184,
       "first_line": "# 第025章 槐树下开桌，三个孩子把题讲亮",
+      "has_markdown_title": true,
       "body_sha256": "fac9190765b7aac4602c4a271aced9ea8d92fd5b5e0d4784684ce575892ff111",
       "empty_body": false
     },
@@ -315,6 +340,7 @@
       "normalized_copy_blob_sha": "d032ae3f943261f86abc61ed32ee1b97a993749c",
       "body_chars": 2077,
       "first_line": "# 第026章 公用盒上锁，互助桌不收人情债",
+      "has_markdown_title": true,
       "body_sha256": "f72ff571af6407e23609dca92f761e51b8208a1da653ce16378097b7e70ae32a",
       "empty_body": false
     },
@@ -327,6 +353,7 @@
       "normalized_copy_blob_sha": "c5217e8b9ea7ec53b24be924f7fc0c18d05de4d0",
       "body_chars": 1998,
       "first_line": "# 第027章 三颗小星连成线，空间给了公用奖励",
+      "has_markdown_title": true,
       "body_sha256": "25a82a7d71390093d8fe97461aa97189f151f34388ec6f9f77fac0fc8800cce6",
       "empty_body": false
     },
@@ -339,6 +366,7 @@
       "normalized_copy_blob_sha": "7890dbca960a872ae18e52c47211557c6521ae96",
       "body_chars": 2317,
       "first_line": "# 第028章 姜红红偷听墙根，反把蓝布包供出来",
+      "has_markdown_title": true,
       "body_sha256": "0c1e40c64f14666caf098d0ffd0c403332df83731499808e87b3908fd7644a5c",
       "empty_body": false
     },
@@ -351,6 +379,7 @@
       "normalized_copy_blob_sha": "ee1d85c4f2c17462a3a881a3345ca0add672689f",
       "body_chars": 1811,
       "first_line": "# 第029章 姜家堂伯再装糊涂，玻璃珠手链说了真话",
+      "has_markdown_title": true,
       "body_sha256": "f703b4c4c28ecf421a5148ee6738414c5ae5ad7a635a45d7498844eeb7f2ebb0",
       "empty_body": false
     },
@@ -363,6 +392,7 @@
       "normalized_copy_blob_sha": "69e37222ff8d9908bdfbf7bb23b20e0b4c1e7001",
       "body_chars": 2344,
       "first_line": "# 第030章 她不哭着换好处，只把河埠头说清楚",
+      "has_markdown_title": true,
       "body_sha256": "8f458fff451a6e4065be98b238ceb235ce9a8f101c4af4d4215df607d856b937",
       "empty_body": false
     },
@@ -375,6 +405,7 @@
       "normalized_copy_blob_sha": "b3201cc0da45031a18abb6b468c0d381786525f6",
       "body_chars": 2518,
       "first_line": "# 第031章 黑皮本翻开，买家名字落进纸上",
+      "has_markdown_title": true,
       "body_sha256": "4c76aba35fb2d9924721c68284accdfb1eebf3347a40be291561ee8249a22402",
       "empty_body": false
     },
@@ -387,6 +418,7 @@
       "normalized_copy_blob_sha": "ef298b18948f65eddd04e9965961180a2ad37066",
       "body_chars": 2514,
       "first_line": "# 第032章 青石镇来电，另一个孩子还活着",
+      "has_markdown_title": true,
       "body_sha256": "656e302df60cc9b56c7107f9daf2f687a03341f45f201315112ec145e3e642fa",
       "empty_body": false
     },
@@ -399,6 +431,7 @@
       "normalized_copy_blob_sha": "ad1faeb6669e321ca66d661ca5d44030d4de6b8b",
       "body_chars": 2668,
       "first_line": "# 第033章 旧物照片摆开，她用童年见闻补上地址",
+      "has_markdown_title": true,
       "body_sha256": "8ab8e1f6b0b4873292adcd115511552c5aa13110542b1c07e2b8d01f701fc559",
       "empty_body": false
     },
@@ -411,6 +444,7 @@
       "normalized_copy_blob_sha": "8706fc4c01047465f423eae794d626093924bf7b",
       "body_chars": 2478,
       "first_line": "# 第034章 红章落进档案袋，她终于有了回家的路",
+      "has_markdown_title": true,
       "body_sha256": "76ad420024b333dc66cd52eba4892588151c0b0b90f5c2a3d0444b12bda73bf3",
       "empty_body": false
     },
@@ -423,6 +457,7 @@
       "normalized_copy_blob_sha": "099ff47f15b6502887b44ff55e6f7b8d22020f2b",
       "body_chars": 2574,
       "first_line": "# 第035章 第一张期中复习表，她把规矩教给全班",
+      "has_markdown_title": true,
       "body_sha256": "23d5fef7af9ab40addf8067288c8caaa3a00ae123bacf52f805c37a6a99d37f3",
       "empty_body": false
     },
@@ -435,6 +470,7 @@
       "normalized_copy_blob_sha": "37962c182f7582faa600397dc35ae1bcd3a0503e",
       "body_chars": 2151,
       "first_line": "# 第036章 铃响以前",
+      "has_markdown_title": true,
       "body_sha256": "89db90eeebae62a9776f5bc332523fd5741ffd51b230327968a79ed010119f19",
       "empty_body": false
     },
@@ -447,6 +483,7 @@
       "normalized_copy_blob_sha": "c8d2c06f3f56c02b1bb3e9d99ed7c286215eecd2",
       "body_chars": 2028,
       "first_line": "# 第037章 我也能讲一道",
+      "has_markdown_title": true,
       "body_sha256": "cc2bee3fec9087c7f1baf080fbed49a4b5417772503d59a2b87741dc310d016f",
       "empty_body": false
     },
@@ -459,6 +496,7 @@
       "normalized_copy_blob_sha": "eedeccafd8446284ad9bfe2f80e36a9342e487b1",
       "body_chars": 1914,
       "first_line": "# 第038章 谁把答案写在了桌肚里？",
+      "has_markdown_title": true,
       "body_sha256": "346d35655106b6269cf83004a43d145c240ca2ebb2ff3d5364d5ab6188db88e7",
       "empty_body": false
     },
@@ -471,6 +509,7 @@
       "normalized_copy_blob_sha": "c95e3934c8a9f5aff80ab509ecac48ffb86786c7",
       "body_chars": 1958,
       "first_line": "# 第039章 成绩单没有替谁撒谎",
+      "has_markdown_title": true,
       "body_sha256": "34df4ae8dc66ef5c4ad45cffa9f2a6b93f3b3d00cd62b1829679e0acb662716a",
       "empty_body": false
     },
@@ -483,6 +522,7 @@
       "normalized_copy_blob_sha": "e9c1f2f3eef9c3e4fbc54520f001048af3a51180",
       "body_chars": 2141,
       "first_line": "# 第040章 卫家来人",
+      "has_markdown_title": true,
       "body_sha256": "f2519c94ca98c6ab57b4c88149fdd43c762fe04a9e521b9e2c4ad5e302c8edec",
       "empty_body": false
     },
@@ -495,6 +535,7 @@
       "normalized_copy_blob_sha": "3b901bc18171e4d46248ccc92a131c45b9767a05",
       "body_chars": 1291,
       "first_line": "# 第041章 不是每一次认亲都该立刻相拥",
+      "has_markdown_title": true,
       "body_sha256": "162184c2404fbedffd30d8b10ccf1249f744714a62b1a78bf6a7d2d5781f7d39",
       "empty_body": false
     },
@@ -507,6 +548,7 @@
       "normalized_copy_blob_sha": "6325df7d2bb1b364d9189a12776f559498e4d764",
       "body_chars": 1289,
       "first_line": "# 第042章 黑皮本的最后两页，指向一个没人留意的名字",
+      "has_markdown_title": true,
       "body_sha256": "51d117e64e33b6626fbfd520218424e951cc610505c83bc04cac68da438cf055",
       "empty_body": false
     },
@@ -519,6 +561,7 @@
       "normalized_copy_blob_sha": "942f11d5b56550ad2216f77a367c0be6d305371c",
       "body_chars": 3181,
       "first_line": "# 第043章 砖窑墙上，十二道矮矮的刻痕",
+      "has_markdown_title": true,
       "body_sha256": "42c6376b371f5ccbab4db1f127407a421d39ec442e31a3392c76f016f96f666f",
       "empty_body": false
     },
@@ -531,6 +574,7 @@
       "normalized_copy_blob_sha": "b585defd9447401e7339258aad074b0493e3fac0",
       "body_chars": 3326,
       "first_line": "# 第044章 卫梅把椅子搬到了门边",
+      "has_markdown_title": true,
       "body_sha256": "1556e9c7986953dc361536e73bc2ce07335ec20d1864bd9bfc04c64e6afb414d",
       "empty_body": false
     },
@@ -543,6 +587,7 @@
       "normalized_copy_blob_sha": "0da7a8201222170128cde6431819fafa275d1c46",
       "body_chars": 3034,
       "first_line": "# 第045章 她没有开口，却替全班找回了答案",
+      "has_markdown_title": true,
       "body_sha256": "7c8459d2d589b299326d994c453efc579dc75d607c0900a6d42d858c0d907056",
       "empty_body": false
     },
@@ -555,6 +600,7 @@
       "normalized_copy_blob_sha": "3670bdf5450b6b75833b265a8473698747f79d5f",
       "body_chars": 2965,
       "first_line": "# 第046章 那句欢迎，第二天就不算数了吗",
+      "has_markdown_title": true,
       "body_sha256": "6a066df8743d120b67aefe312fbc98479669891802e68d200ca768f5e02098ed",
       "empty_body": false
     },
@@ -567,6 +613,7 @@
       "normalized_copy_blob_sha": "59246cd2b3c04886a913b1e81a044ae1561c4374",
       "body_chars": 1599,
       "first_line": "# 第047章 书淋湿了，人不能丢",
+      "has_markdown_title": true,
       "body_sha256": "3028ce95bd1935cff4517d1a6a9cf0732a735da92386aba06ca14e6e6a062891",
       "empty_body": false
     },
@@ -579,6 +626,7 @@
       "normalized_copy_blob_sha": "a240ff1be513c94223b656e60d9ef4bd311d3051",
       "body_chars": 3312,
       "first_line": "# 第048章 七双手",
+      "has_markdown_title": true,
       "body_sha256": "2b1a06a14d42c873dc95b7dd878454c42be2fbfa6b95f1b30795b439f0b80e0e",
       "empty_body": false
     },
@@ -591,6 +639,7 @@
       "normalized_copy_blob_sha": "9c75fe3322243b607df5c965654760f3f608cbae",
       "body_chars": 3075,
       "first_line": "# 第049章 铁门之外",
+      "has_markdown_title": true,
       "body_sha256": "ca3d83f62d33f99479804959085e0003d31e41686dac0969bc7846e74587a12b",
       "empty_body": false
     },
@@ -603,6 +652,7 @@
       "normalized_copy_blob_sha": "43ba8634d182d56748d3180aa5892fc56eefa413",
       "body_chars": 3131,
       "first_line": "# 第050章 八十一分，不算赢",
+      "has_markdown_title": true,
       "body_sha256": "3b41f3a11146ba6f98241cc101f12eab11a450beeda5f4574bf73d5af5574fc8",
       "empty_body": false
     },
@@ -615,6 +665,7 @@
       "normalized_copy_blob_sha": "a177eb4efc6893c07d612afea47434d06c51264c",
       "body_chars": 3046,
       "first_line": "# 第051章 七十三分里的“猜对”",
+      "has_markdown_title": true,
       "body_sha256": "186ac2773f94f5d3b36b6112a1f1b9e2b9ab1e00b7ee14f5d38b5b3005ab5dba",
       "empty_body": false
     },
@@ -627,6 +678,7 @@
       "normalized_copy_blob_sha": "f6dd3259654d29b3394dcea4abbf6bf367ab1e48",
       "body_chars": 2979,
       "first_line": "# 第052章 喜娃不是陈小喜",
+      "has_markdown_title": true,
       "body_sha256": "5b80455552a91c0d370ac473ff137fe914ebf76d304c4cc7bbaa07ec8699cf1f",
       "empty_body": false
     },
@@ -639,6 +691,7 @@
       "normalized_copy_blob_sha": "3ddc407c2b5eb39883facc88115cf82dcf3e11b4",
       "body_chars": 3065,
       "first_line": "# 第053章 别叫我小喜",
+      "has_markdown_title": true,
       "body_sha256": "40b51b3619b1c669ae250062aa18cb5905488dc903cb92757e47f44366f96edf",
       "empty_body": false
     },
@@ -651,6 +704,7 @@
       "normalized_copy_blob_sha": "12a02e60068cc491c8a626765a9d4daefcc3a622",
       "body_chars": 3140,
       "first_line": "# 第054章 门锁在哪儿",
+      "has_markdown_title": true,
       "body_sha256": "726fb4150c0046d9a5f97c9afaa9928ba6a379cfcffae9eb3baedeb6f3a4a0dd",
       "empty_body": false
     },
@@ -663,6 +717,7 @@
       "normalized_copy_blob_sha": "f4509848bef386f81b18bb82dad83dfb8bc51c6b",
       "body_chars": 3023,
       "first_line": "# 第055章 那张“走？”",
+      "has_markdown_title": true,
       "body_sha256": "1ac7565f938a0b7784d837df8ac21be1592285f34f09c0145a6759ad38fcadea",
       "empty_body": false
     },
@@ -675,6 +730,7 @@
       "normalized_copy_blob_sha": "c5f9d8c7c8e357c3250a6e3402f19bf43ac93f81",
       "body_chars": 2996,
       "first_line": "# 第056章 半碗玉米糊",
+      "has_markdown_title": true,
       "body_sha256": "b26ad1d68bdd5826da54ad633be7d9aa0551766ae29656b3f44753132c1a7466",
       "empty_body": false
     },
@@ -687,6 +743,7 @@
       "normalized_copy_blob_sha": "c1f4aa3ef144007f12d6232b6c126742aa9d9136",
       "body_chars": 2944,
       "first_line": "# 第057章 她漏掉了两个字",
+      "has_markdown_title": true,
       "body_sha256": "934bc897d051f0e4dd5bd675789e5efb5e2ad515a992f3aecc992b14dfe28e83",
       "empty_body": false
     },
@@ -699,6 +756,7 @@
       "normalized_copy_blob_sha": "5d94be3efd82ee8441227e3768d0e91001890c0e",
       "body_chars": 3090,
       "first_line": "# 第058章 下次，来",
+      "has_markdown_title": true,
       "body_sha256": "681142fdbf7e25aee02e161f1b7c0a0518ee170a13111f2713dfe84de541bfa2",
       "empty_body": false
     },
@@ -711,6 +769,7 @@
       "normalized_copy_blob_sha": "ccc8db1f2cb6d69300ecab863b7119da91135a8c",
       "body_chars": 3734,
       "first_line": "# 第059章 空白本有了名字",
+      "has_markdown_title": true,
       "body_sha256": "ffd1cd9c310fa4d864186d77d7061294b92a8f41d52610c89fbc021be82fb4e4",
       "empty_body": false
     },
@@ -723,6 +782,7 @@
       "normalized_copy_blob_sha": "ae6cc8f8dfd93b3c0c76da9ad22d36ec7f0f4b24",
       "body_chars": 2910,
       "first_line": "# 第060章 纸上画着一只左手",
+      "has_markdown_title": true,
       "body_sha256": "c0b2d075b39d6d377429773fab6d42971426073c88a4b27463bd8c2aa97ca44d",
       "empty_body": false
     },
@@ -735,6 +795,7 @@
       "normalized_copy_blob_sha": "1c9efdc9f03e2665e564a8ba25720d68e9484972",
       "body_chars": 3128,
       "first_line": "# 第061章 粮本空着一格",
+      "has_markdown_title": true,
       "body_sha256": "c9db38b08187c34d7c7edef903c76b09d4b720842ef37c207960067ee1b602b6",
       "empty_body": false
     },
@@ -747,6 +808,7 @@
       "normalized_copy_blob_sha": "21a6edeb8148a9eddd240279fe27b00c627b094c",
       "body_chars": 3172,
       "first_line": "# 第062章 地窖里多了一道线",
+      "has_markdown_title": true,
       "body_sha256": "d20bc9211ad4ecc046c49d91ad5f4049fb5003ca8ae4995dc5bf4a6149f5521a",
       "empty_body": false
     },
@@ -759,6 +821,7 @@
       "normalized_copy_blob_sha": "06f46a0d8be5c0f9a0020971c70852caaa444650",
       "body_chars": 3169,
       "first_line": "# 第063章 那天她没有去互助桌",
+      "has_markdown_title": true,
       "body_sha256": "28bfbce0f7b306e304ba5da9b29f497810e1bc635ccf49a2beecb67c65e5b264",
       "empty_body": false
     },
@@ -771,6 +834,7 @@
       "normalized_copy_blob_sha": "8511493287a277519432af045ae65b533a5a60cb",
       "body_chars": 3313,
       "first_line": "# 第064章 第一棵白菜写着她的名字",
+      "has_markdown_title": true,
       "body_sha256": "e8695ec92b65653d77028effc1b4aa7e253905b5572fa7bddf29e6a54d2a951a",
       "empty_body": false
     },
@@ -783,6 +847,7 @@
       "normalized_copy_blob_sha": "c027e9599eeab3e27569f3fc92650655f17461f4",
       "body_chars": 2549,
       "first_line": "# 第065章 槐树下的第三根烟",
+      "has_markdown_title": true,
       "body_sha256": "83c70614e9b96afecaba6ca2b372c848197721feb65a696a8ebb4bc60a739a74",
       "empty_body": false
     },
@@ -795,6 +860,7 @@
       "normalized_copy_blob_sha": "57d0c453de9af28aa14a85ad55e3b781fa0d17ad",
       "body_chars": 2407,
       "first_line": "# 第066章 秤房里少了一只手套",
+      "has_markdown_title": true,
       "body_sha256": "1a976f13889fa90424e4ad8137177ee1c2687928ae56da075c6de82d583711e6",
       "empty_body": false
     },
@@ -807,6 +873,7 @@
       "normalized_copy_blob_sha": "47752d9894b5eeb183d49612455793c7df69b883",
       "body_chars": 2396,
       "first_line": "# 第067章 安字没有主人",
+      "has_markdown_title": true,
       "body_sha256": "584bd029de8effadc5d1efbe5041e02d34ef8818376b28227d29adce48db4e3b",
       "empty_body": false
     },
@@ -819,6 +886,7 @@
       "normalized_copy_blob_sha": "7975411dc8d16c9834c0a8c29bf4bd184d3cddd0",
       "body_chars": 2000,
       "first_line": "# 第068章 她先把门打开一条缝",
+      "has_markdown_title": true,
       "body_sha256": "8bbfb0805b0b7221ba7e99cfc0f9188d007c11e346c210c8cf29f49c39e76d35",
       "empty_body": false
     },
@@ -831,6 +899,7 @@
       "normalized_copy_blob_sha": "e3bc88d65a94f223e3f57c3baa81b464ba4c9172",
       "body_chars": 2403,
       "first_line": "# 第069章 一把钥匙，两边都能转",
+      "has_markdown_title": true,
       "body_sha256": "97919fd5108881e09e26a202e2f94fdc5ba1849be972650b8008de03283b1c90",
       "empty_body": false
     },
@@ -843,6 +912,7 @@
       "normalized_copy_blob_sha": "bdb8f2ee35f3545811c70102743db85eefc26955",
       "body_chars": 2377,
       "first_line": "# 第070章 没盖章的探望单",
+      "has_markdown_title": true,
       "body_sha256": "ca7edd4d6dfec02112d96665573f3436cdff32eebfd120d57b9445cad86e33d5",
       "empty_body": false
     },
@@ -855,6 +925,7 @@
       "normalized_copy_blob_sha": "a7432c60de4ab9fcc0b88ee350e2c0a098ae1801",
       "body_chars": 2396,
       "first_line": "# 第071章 桌子搬到走廊那天",
+      "has_markdown_title": true,
       "body_sha256": "997d9d358930210df124e3df69678ca94ac01fafc2bd9ff27ae6dc6760b00b62",
       "empty_body": false
     },
@@ -867,6 +938,7 @@
       "normalized_copy_blob_sha": "50b11f1df013476a7e3aeb8baa7ce2eb72406a7e",
       "body_chars": 2370,
       "first_line": "# 第072章 那页没有被撕掉",
+      "has_markdown_title": true,
       "body_sha256": "5f2a85782bec7baed6c093dcc5db537d71ee3e7f93f709bfc501df58d701a309",
       "empty_body": false
     },
@@ -879,6 +951,7 @@
       "normalized_copy_blob_sha": "5e15594a1be1b7661154bdecc8c1c6523fd73769",
       "body_chars": 2394,
       "first_line": "# 第073章 轮值册上少了一个名字",
+      "has_markdown_title": true,
       "body_sha256": "881227f2189bb72c6b8ee87544378ba0e0e8ab7d03660436dcaf373c2913c942",
       "empty_body": false
     },
@@ -891,6 +964,7 @@
       "normalized_copy_blob_sha": "140861d9c6ba68a7f5418e267b1f5dc27bfd71f2",
       "body_chars": 2367,
       "first_line": "# 第074章 夜班铃响过三次",
+      "has_markdown_title": true,
       "body_sha256": "d3c9b4ead5106839214abdbd94b92b187efb4219837c9fc47804c4eb48811b44",
       "empty_body": false
     }
@@ -898,9 +972,11 @@
   "missing_chapters": [],
   "duplicate_number_files": [],
   "index_missing_chapters": [],
+  "missing_markdown_titles": [],
   "title_index_mismatches": [],
   "exact_duplicate_body_groups": [],
   "blob_copy_mismatches": [],
+  "empty_body_chapters": [],
   "length_profile": {
     "count_method": "NON_WHITESPACE_BODY_CHARACTERS",
     "valid_chapter_count": 74,
@@ -914,6 +990,178 @@
     "max": 3734,
     "early_10_mean": 2397.9,
     "early_30_mean": 2291.1
+  },
+  "length_threshold_buckets": {
+    "below_1400": [
+      {
+        "chapter": "CH042",
+        "body_chars": 1289,
+        "blob_sha": "6325df7d2bb1b364d9189a12776f559498e4d764"
+      },
+      {
+        "chapter": "CH041",
+        "body_chars": 1291,
+        "blob_sha": "3b901bc18171e4d46248ccc92a131c45b9767a05"
+      }
+    ],
+    "below_1800": [
+      {
+        "chapter": "CH042",
+        "body_chars": 1289,
+        "blob_sha": "6325df7d2bb1b364d9189a12776f559498e4d764"
+      },
+      {
+        "chapter": "CH041",
+        "body_chars": 1291,
+        "blob_sha": "3b901bc18171e4d46248ccc92a131c45b9767a05"
+      },
+      {
+        "chapter": "CH024",
+        "body_chars": 1531,
+        "blob_sha": "239a68de1250067611fa6b3428d6bc4362b0fc74"
+      },
+      {
+        "chapter": "CH047",
+        "body_chars": 1599,
+        "blob_sha": "59246cd2b3c04886a913b1e81a044ae1561c4374"
+      },
+      {
+        "chapter": "CH022",
+        "body_chars": 1733,
+        "blob_sha": "47adff9c6bd1d441479feda24a7e02b8a50b3917"
+      }
+    ],
+    "below_2200": [
+      {
+        "chapter": "CH042",
+        "body_chars": 1289,
+        "blob_sha": "6325df7d2bb1b364d9189a12776f559498e4d764"
+      },
+      {
+        "chapter": "CH041",
+        "body_chars": 1291,
+        "blob_sha": "3b901bc18171e4d46248ccc92a131c45b9767a05"
+      },
+      {
+        "chapter": "CH024",
+        "body_chars": 1531,
+        "blob_sha": "239a68de1250067611fa6b3428d6bc4362b0fc74"
+      },
+      {
+        "chapter": "CH047",
+        "body_chars": 1599,
+        "blob_sha": "59246cd2b3c04886a913b1e81a044ae1561c4374"
+      },
+      {
+        "chapter": "CH022",
+        "body_chars": 1733,
+        "blob_sha": "47adff9c6bd1d441479feda24a7e02b8a50b3917"
+      },
+      {
+        "chapter": "CH029",
+        "body_chars": 1811,
+        "blob_sha": "ee1d85c4f2c17462a3a881a3345ca0add672689f"
+      },
+      {
+        "chapter": "CH023",
+        "body_chars": 1851,
+        "blob_sha": "1cc311180af7639654a04d5a6570ef6e47c31b35"
+      },
+      {
+        "chapter": "CH038",
+        "body_chars": 1914,
+        "blob_sha": "eedeccafd8446284ad9bfe2f80e36a9342e487b1"
+      },
+      {
+        "chapter": "CH039",
+        "body_chars": 1958,
+        "blob_sha": "c95e3934c8a9f5aff80ab509ecac48ffb86786c7"
+      },
+      {
+        "chapter": "CH009",
+        "body_chars": 1972,
+        "blob_sha": "82c2dd214855495d3a05d8c8e48609f865d40618"
+      },
+      {
+        "chapter": "CH027",
+        "body_chars": 1998,
+        "blob_sha": "c5217e8b9ea7ec53b24be924f7fc0c18d05de4d0"
+      },
+      {
+        "chapter": "CH068",
+        "body_chars": 2000,
+        "blob_sha": "7975411dc8d16c9834c0a8c29bf4bd184d3cddd0"
+      },
+      {
+        "chapter": "CH037",
+        "body_chars": 2028,
+        "blob_sha": "c8d2c06f3f56c02b1bb3e9d99ed7c286215eecd2"
+      },
+      {
+        "chapter": "CH016",
+        "body_chars": 2076,
+        "blob_sha": "9b2a85dc8d5df8790fe050c6f0775fb940eabb2d"
+      },
+      {
+        "chapter": "CH026",
+        "body_chars": 2077,
+        "blob_sha": "d032ae3f943261f86abc61ed32ee1b97a993749c"
+      },
+      {
+        "chapter": "CH021",
+        "body_chars": 2108,
+        "blob_sha": "1f35b541fca3197d7553514ad13728018209c8b8"
+      },
+      {
+        "chapter": "CH001",
+        "body_chars": 2121,
+        "blob_sha": "0220cce7663dd9db7fb71e44ad5732b161066973"
+      },
+      {
+        "chapter": "CH040",
+        "body_chars": 2141,
+        "blob_sha": "e9c1f2f3eef9c3e4fbc54520f001048af3a51180"
+      },
+      {
+        "chapter": "CH036",
+        "body_chars": 2151,
+        "blob_sha": "37962c182f7582faa600397dc35ae1bcd3a0503e"
+      },
+      {
+        "chapter": "CH025",
+        "body_chars": 2184,
+        "blob_sha": "877ae46aadad1995af61f0404c6232235194be1e"
+      }
+    ],
+    "above_3200": [
+      {
+        "chapter": "CH048",
+        "body_chars": 3312,
+        "blob_sha": "a240ff1be513c94223b656e60d9ef4bd311d3051"
+      },
+      {
+        "chapter": "CH064",
+        "body_chars": 3313,
+        "blob_sha": "8511493287a277519432af045ae65b533a5a60cb"
+      },
+      {
+        "chapter": "CH044",
+        "body_chars": 3326,
+        "blob_sha": "b585defd9447401e7339258aad074b0493e3fac0"
+      },
+      {
+        "chapter": "CH059",
+        "body_chars": 3734,
+        "blob_sha": "ccc8db1f2cb6d69300ecab863b7119da91135a8c"
+      }
+    ],
+    "above_3600": [
+      {
+        "chapter": "CH059",
+        "body_chars": 3734,
+        "blob_sha": "ccc8db1f2cb6d69300ecab863b7119da91135a8c"
+      }
+    ]
   },
   "structural_result": "PASS"
 }
