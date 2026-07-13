@@ -820,31 +820,29 @@
     },
     {
       "path": ".quality_runtime/formal/CH023_第023章_金牙女人的红绳_牵出柳树沟旧账.md",
-      "blob_sha": "6734dbad256ac90e981ff25b9ac855b0906705a6",
-      "total_body_chars": 1912,
-      "total_paragraphs": 82,
-      "single_sentence_paragraph_count": 48,
-      "single_sentence_paragraph_ratio": 0.5854,
-      "short_paragraph_le20_count": 51,
-      "short_paragraph_le20_ratio": 0.622,
-      "short_paragraph_le40_count": 67,
-      "short_paragraph_le40_ratio": 0.8171,
-      "dialogue_only_paragraph_count": 12,
-      "dialogue_only_paragraph_ratio": 0.1463,
-      "dialogue_led_paragraph_count": 21,
-      "dialogue_led_paragraph_ratio": 0.2561,
-      "dialogue_character_ratio": 0.2636,
-      "non_dialogue_narrative_character_ratio": 0.7364,
-      "max_dialogue_only_run": 2,
-      "max_short_paragraph_le20_run": 10,
-      "max_short_paragraph_le40_run": 19,
-      "max_sawtooth_run": 10,
+      "blob_sha": "1cc311180af7639654a04d5a6570ef6e47c31b35",
+      "total_body_chars": 1851,
+      "total_paragraphs": 26,
+      "single_sentence_paragraph_count": 1,
+      "single_sentence_paragraph_ratio": 0.0385,
+      "short_paragraph_le20_count": 1,
+      "short_paragraph_le20_ratio": 0.0385,
+      "short_paragraph_le40_count": 3,
+      "short_paragraph_le40_ratio": 0.1154,
+      "dialogue_only_paragraph_count": 1,
+      "dialogue_only_paragraph_ratio": 0.0385,
+      "dialogue_led_paragraph_count": 2,
+      "dialogue_led_paragraph_ratio": 0.0769,
+      "dialogue_character_ratio": 0.1415,
+      "non_dialogue_narrative_character_ratio": 0.8585,
+      "max_dialogue_only_run": 1,
+      "max_short_paragraph_le20_run": 1,
+      "max_short_paragraph_le40_run": 2,
+      "max_sawtooth_run": 2,
       "chapter": "CH023",
-      "result": "MANDATORY_BODY_REVIEW",
+      "result": "PASS_NUMERIC",
       "absolute_failures": [],
-      "reference_band_review_hits": [
-        "REFERENCE_DRIFT:short20_ratio"
-      ]
+      "reference_band_review_hits": []
     },
     {
       "path": ".quality_runtime/formal/CH024_第024章_她画出歪脖槐_公安顺路追下去.md",
@@ -2185,7 +2183,6 @@
       "CH025"
     ],
     "mandatory_body_review_chapters": [
-      "CH023",
       "CH025",
       "CH068"
     ],
@@ -2198,7 +2195,6 @@
     }
   },
   "hit_locations": [
-    ".quality_runtime/formal/CH023_第023章_金牙女人的红绳_牵出柳树沟旧账.md",
     ".quality_runtime/formal/CH025_第025章_槐树下开桌_三个孩子把题讲亮.md",
     ".quality_runtime/formal/CH068_第068章_她先把门打开一条缝.md"
   ],

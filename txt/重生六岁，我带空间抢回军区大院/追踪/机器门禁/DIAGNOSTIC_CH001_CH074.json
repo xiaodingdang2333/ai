@@ -275,11 +275,11 @@
       "number": 23,
       "source_path": "txt/重生六岁，我带空间抢回军区大院/正文/第023章_金牙女人的红绳，牵出柳树沟旧账.md",
       "formal_path": ".quality_runtime/formal/CH023_第023章_金牙女人的红绳_牵出柳树沟旧账.md",
-      "blob_sha": "6734dbad256ac90e981ff25b9ac855b0906705a6",
-      "normalized_copy_blob_sha": "6734dbad256ac90e981ff25b9ac855b0906705a6",
-      "body_chars": 1912,
+      "blob_sha": "1cc311180af7639654a04d5a6570ef6e47c31b35",
+      "normalized_copy_blob_sha": "1cc311180af7639654a04d5a6570ef6e47c31b35",
+      "body_chars": 1851,
       "first_line": "# 第023章 金牙女人的红绳，牵出柳树沟旧账",
-      "body_sha256": "5da78361d73f1772c6b18259ed779f449d8675f50d3fee283e4d3b65b998dedb",
+      "body_sha256": "31376b45e6e8ff564a91708a6227b8dc1e8b988090a037a2fc341a8387854fde",
       "empty_body": false
     },
     {
@@ -908,12 +908,12 @@
     "p10": 1927,
     "p25": 2240,
     "median": 2435.5,
-    "mean": 2511.49,
+    "mean": 2510.66,
     "p75": 2962,
     "p90": 3137,
     "max": 3734,
     "early_10_mean": 2397.9,
-    "early_30_mean": 2296.9
+    "early_30_mean": 2294.87
   },
   "structural_result": "PASS"
 }
