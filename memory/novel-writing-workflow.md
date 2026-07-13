@@ -21,6 +21,13 @@
 - 服务器已新增 Git worker 入口：`/home/admin/ai/scripts/novel-git-poller.py`、`novel-git-sample-worker.py`、`novel-git-upload-worker.py`；对应 systemd 模板在 `/home/admin/ai/systemd/`。worker 默认 dry-run，execute 模式才写文件/上传，且 Git 回写只提交本轮生成路径，不强推。
 - 服务器 Git worker 还包括 `/home/admin/ai/scripts/novel-git-write-worker.py`，用于上述显式代写队列。当前 timer：poller 每1分钟，upload 每1分钟，write 每2分钟，sample 每5分钟。
 
+## 2026-07-13 Creative Craft Profile 质量层
+
+- 所有新书在写第1章前必须建立项目级 `工程元数据/CREATIVE_CRAFT_PROFILE.json` 和 `CREATIVE_CRAFT_AUDIT_REGISTRY.json`；旧书在下一次写作、修订或上传前迁移。权威规范在 `/home/admin/chatgpt-novel-production-system/workflow/creative-craft/CREATIVE_CRAFT_EXECUTION_POLICY.md`，只吸收功能性创作方法，不复制任何外部正文、专名、标志事件或表达。
+- 每个启用章节的合同必须包含 `reader_promise`、`emotional_start`、`emotional_turn`、`relationship_beat`、`genre_delivery`、`scene_texture`、`anti_repeat_delta`。候选稿按 `architecture → character_relationship → prose_emotion → continuity` 顺序审稿，不使用多 Agent 扇出；每项要写正文证据并绑定 exact current blob。
+- `HARD` 错误直接阻断，`HIGH` 风险必须实际返修后重审，`MEDIUM/LOW` 必须登记处理方式并在每5章、每10章和 ARC 结束审计中复核。确定性退化扫描检查提示词/元数据泄漏、长段复用、相邻章大段复用、模板词密度和碎段风险；它只能提供风险证据，不能单独证明文学质量。
+- 项目生产预检、holistic READY、服务器代写质量门禁和服务器草稿上传复验都必须检查该档案。没有 profile、合同字段、顺序审稿回执、退化扫描或应到期审计的章节不得 READY 或上传。首轮试点只能报告自动门禁结果和用户/指定读者盲评，不能承诺或宣称已证明质量必然提升。
+
 ## 强制读取顺序
 
 1. `memory/user-profile.md`

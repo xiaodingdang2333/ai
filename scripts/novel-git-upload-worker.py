@@ -563,13 +563,26 @@ def run_canonical_upload_quality(repo: Path, project_path: Path, data: dict[str,
     out_dir = quality_output_dir(repo, project_path, execute)
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    creative_output = out_dir / f"SERVER_UPLOAD_CREATIVE_CRAFT_GATE_CH{start:03d}_CH{end:03d}_{stamp}.json"
     output = out_dir / f"SERVER_UPLOAD_CANONICAL_READY_CH{start:03d}_CH{end:03d}_{stamp}.json"
     summary_path = out_dir / f"SERVER_UPLOAD_CANONICAL_GATE_CH{start:03d}_CH{end:03d}_{stamp}.json"
     errors: list[str] = []
+    creative_result: dict[str, Any] | None = None
     result: dict[str, Any] | None = None
     if end < start:
         errors.append("upload_range is missing or invalid")
     else:
+        creative_command = [
+            sys.executable, str(repo / "scripts" / "novel_quality_runtime" / "validate_creative_craft.py"),
+            "--project-dir", str(project_path.relative_to(repo)),
+            "--from-chapter", str(start), "--to-chapter", str(end),
+            "--output-json", str(creative_output.relative_to(repo) if execute else creative_output),
+        ]
+        creative_result = run_repo_script(repo, creative_command) if execute else {"status": "dry_run", "command": creative_command}
+        if execute and (creative_result["status"] != "ok" or not creative_output.exists()):
+            errors.append("Creative Craft exact-blob validation failed to execute")
+
+    if not errors:
         command = [
             sys.executable, str(repo / "scripts" / "novel_quality_runtime" / "validate_ready_promotion_holistic.py"),
             "--project-dir", str(project_path.relative_to(repo)),
@@ -591,12 +604,14 @@ def run_canonical_upload_quality(repo: Path, project_path: Path, data: dict[str,
         "upload_range": {"from_chapter": start, "to_chapter": end},
         "result": "PASS" if not errors else "FAIL",
         "blocking_reasons": errors,
+        "creative_craft_output": str(creative_output),
+        "creative_craft_command": creative_result,
         "canonical_ready_output": str(output),
         "canonical_command": result,
         "trusts_free_ready_booleans": False,
     }
     write_json(summary_path, summary)
-    changed = [p for p in [output, summary_path] if p.exists() and p.is_relative_to(repo)]
+    changed = [p for p in [creative_output, output, summary_path] if p.exists() and p.is_relative_to(repo)]
     return not errors, summary, changed
 
 

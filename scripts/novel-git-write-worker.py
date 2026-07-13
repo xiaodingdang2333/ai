@@ -172,6 +172,7 @@ def run_quality(repo: Path, project_path: Path, from_chapter: int, to_chapter: i
     stamp = datetime.now().strftime("%Y%m%d%H%M%S")
     preflight_output = audits / f"SERVER_WRITE_PREFLIGHT_CH{from_chapter:03d}_CH{to_chapter:03d}_{stamp}.json"
     p0_output = audits / f"SERVER_WRITE_METRICS_GATE_CH{from_chapter:03d}_CH{to_chapter:03d}_{stamp}.json"
+    creative_output = audits / f"SERVER_WRITE_CREATIVE_CRAFT_GATE_CH{from_chapter:03d}_CH{to_chapter:03d}_{stamp}.json"
     ready_output = audits / f"SERVER_WRITE_READY_GATE_CH{from_chapter:03d}_CH{to_chapter:03d}_{stamp}.json"
     summary_output = audits / f"SERVER_WRITE_QUALITY_GATE_CH{from_chapter:03d}_CH{to_chapter:03d}_{stamp}.json"
     errors: list[str] = []
@@ -188,6 +189,7 @@ def run_quality(repo: Path, project_path: Path, from_chapter: int, to_chapter: i
             errors.append(f"CH{no:03d} han_count {chars} < 2500")
 
     p0_result = None
+    creative_result = None
     ready_result = None
     if not errors:
         preflight_result = run_repo_command(repo, [
@@ -218,6 +220,18 @@ def run_quality(repo: Path, project_path: Path, from_chapter: int, to_chapter: i
                 errors.append(f"P0 hard gate result is {p0_payload.get('p0_manifest_result')}")
 
     if not errors:
+        creative_result = run_repo_command(repo, [
+            sys.executable,
+            str(repo / "scripts" / "novel_quality_runtime" / "validate_creative_craft.py"),
+            "--project-dir", str(project_path.relative_to(repo)),
+            "--from-chapter", str(from_chapter),
+            "--to-chapter", str(to_chapter),
+            "--output-json", str(creative_output.relative_to(repo)),
+        ])
+        if creative_result["status"] != "ok":
+            errors.append("Creative Craft exact-blob validation failed")
+
+    if not errors:
         ready_result = run_repo_command(repo, [
             sys.executable,
             str(repo / "scripts" / "novel_quality_runtime" / "validate_ready_promotion_holistic.py"),
@@ -243,14 +257,16 @@ def run_quality(repo: Path, project_path: Path, from_chapter: int, to_chapter: i
         "blocking_reasons": errors,
         "chapters": chapters,
         "p0_output": str(p0_output.relative_to(repo)),
+        "creative_craft_output": str(creative_output.relative_to(repo)),
         "preflight_output": str(preflight_output.relative_to(repo)),
         "ready_output": str(ready_output.relative_to(repo)),
         "preflight_command": preflight_result if 'preflight_result' in locals() else None,
         "p0_command": p0_result,
+        "creative_craft_command": creative_result,
         "ready_command": ready_result,
     }
     write_json(summary_output, summary)
-    paths = [path for path in [preflight_output, p0_output, ready_output, summary_output] if path.exists()]
+    paths = [path for path in [preflight_output, p0_output, creative_output, ready_output, summary_output] if path.exists()]
     return not errors, summary, paths
 
 
@@ -266,11 +282,12 @@ def build_prompt(repo: Path, project_path: Path, request: dict[str, Any], start_
 - 只使用 Git 仓库文件，不使用旧 custom GPT Action / services/novel-actions 流程。
 - 先读取 CURRENT.json、workflow/v2.2-LTS/workflow.json、PROTOCOL_INDEX.json，以及本任务需要的写作/QA bundle。
 - 读取项目：{project_rel}
-- 读取 00_PROJECT.json、工程元数据/PROJECT_LAYOUT.json、handoff 中最新快照、audits 中最近质量报告和正式正文最近 1-3 章。
+- 读取 00_PROJECT.json、工程元数据/PROJECT_LAYOUT.json、工程元数据/CREATIVE_CRAFT_PROFILE.json、handoff 中最新快照、audits 中最近质量报告和正式正文最近 1-3 章。
 - 续写范围：CH{from_chapter:03d} 到 CH{to_chapter:03d}，共 {count} 章。
 - 每章正文至少 2500 个中文汉字，目标 3000 字左右。
 - 只能按 PROJECT_LAYOUT.json 写入 {project_rel}/{formal_dir}/；不能假定 formal/CHxxx 布局，也不能覆盖已存在章节。
 - 每章必须先生成候选、独立批评、实际返修、验收，再更新质量注册表、章节 ledger、提交事务和 handoff。所有正文相关门禁必须绑定正文的 exact current blob SHA；仅在 `scripts/novel_quality_runtime/validate_ready_promotion_holistic.py` 通过后才算正式就绪。
+- 必须执行 `workflow/creative-craft/CREATIVE_CRAFT_EXECUTION_POLICY.md`：章节合同增加 `creative_craft` 小节和全部固定字段；候选稿按 architecture -> character_relationship -> prose_emotion -> continuity 顺序审稿；创建 `audits/CREATIVE_CRAFT_CHxxx_Rn.json` 与对应退化扫描报告；质量注册表写入同一 exact blob 的 `creative_craft_gate`。没有这些证据不得把章节标为 READY。
 - 必须按 2.2-LTS 强质量标准自检：背景清楚、人物动机和情绪线明确、场景动作具体、避免报告体、避免标题/句式模板化、避免 AI 味、避免与前文重复换皮。
 - 不得自行把 00_PROJECT.json 改成 ready_for_draft_upload。上传 worker 会从 exact-blob holistic receipt、人工审核和平台建书回执派生上传就绪状态。
 - 不调用番茄上传脚本。上传由独立 upload worker 执行。
@@ -341,6 +358,11 @@ def validate_request(repo: Path, request: dict[str, Any]) -> list[str]:
             registry_path = project_path / "工程元数据" / "QUALITY_GATE_REGISTRY.json"
             router_path = project_path / "00_作品总控.md"
             project_data = load_json(project_path / "00_PROJECT.json")
+            layout = project_layout(project_path)
+            creative_profile_ref = str(layout.get("creative_craft_profile_path", "工程元数据/CREATIVE_CRAFT_PROFILE.json"))
+            creative_profile_path = (project_path / creative_profile_ref).resolve()
+            if not creative_profile_path.is_relative_to(project_path.resolve()) or not creative_profile_path.is_file():
+                errors.append("creative craft profile is missing; migrate the project before server writing")
             current = load_json(repo / "CURRENT.json")
             state = next((item for item in current.get("projects", {}).values()
                           if isinstance(item, dict) and item.get("project_path") == project), {})

@@ -8,6 +8,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 以 `CURRENT.json` → `workflow/v2.2-LTS/EFFECTIVE_RULESET.json` 为入口；正文、代写、上传按项目 `PROJECT_LAYOUT.json`，不可硬编码 `formal/CHxxx`。
 - 上传只接受 exact-current-blob quality registry + holistic READY receipt，不能信任自由 boolean。新版服务器代写请求 schema 1.1 必须 pin main、base commit、路由、规则集、质量注册表和布局哈希。
 
+## 2026-07-13 Creative Craft Profile 质量层
+
+- 新书在 CH001 前、旧书在下一次写作/修订/上传前，必须有项目级 `工程元数据/CREATIVE_CRAFT_PROFILE.json` 与审计登记表；规则在 `/home/admin/chatgpt-novel-production-system/workflow/creative-craft/CREATIVE_CRAFT_EXECUTION_POLICY.md`。只使用功能性创作方法，禁止复制外部作品正文、专名、事件或表达。
+- 每个启用章节合同固定写 `reader_promise`、`emotional_start`、`emotional_turn`、`relationship_beat`、`genre_delivery`、`scene_texture`、`anti_repeat_delta`；按 architecture → character_relationship → prose_emotion → continuity 顺序审稿，回执和退化扫描均绑定 exact blob。
+- HARD 阻断，HIGH 必须实际返修重审，MEDIUM/LOW 记录并在 5/10 章及 ARC 审计处理。项目预检、holistic READY、服务器代写和上传复验都检查此层。自动校验不能证明文学质量；试点质量结论需要用户/指定读者盲评。
+
 ## Qimao Submission Rule Trigger
 
 - When the user asks to write, revise, package, or evaluate fiction for 七猫投稿/七猫内投, first read `F:\ai\memory\qimao-submission-rules.md`. Apply its ranking-derived rules: title must visibly promise the genre hook; first chapter starts inside a crisis, not a setting lecture; first 100 words need curiosity, first 300 words need emotion/conflict/gimmick; 女主 must quickly gain a visible 反制筹码; each chapter needs an immediate 局 and a chapter-end new 危机.
