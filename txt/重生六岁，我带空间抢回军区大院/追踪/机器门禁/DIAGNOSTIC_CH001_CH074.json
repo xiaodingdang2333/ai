@@ -531,12 +531,12 @@
       "number": 41,
       "source_path": "txt/重生六岁，我带空间抢回军区大院/正文/第041章_不是每一次认亲都该立刻相拥.md",
       "formal_path": ".quality_runtime/formal/CH041_第041章_不是每一次认亲都该立刻相拥.md",
-      "blob_sha": "3b901bc18171e4d46248ccc92a131c45b9767a05",
-      "normalized_copy_blob_sha": "3b901bc18171e4d46248ccc92a131c45b9767a05",
-      "body_chars": 1291,
+      "blob_sha": "188428b25ce2cd0ed41a99fa7290e195ddf9d445",
+      "normalized_copy_blob_sha": "188428b25ce2cd0ed41a99fa7290e195ddf9d445",
+      "body_chars": 1726,
       "first_line": "# 第041章 不是每一次认亲都该立刻相拥",
       "has_markdown_title": true,
-      "body_sha256": "162184c2404fbedffd30d8b10ccf1249f744714a62b1a78bf6a7d2d5781f7d39",
+      "body_sha256": "162e412965c4d5b2faea2fd4c32afd29d53f20fd2e8ca3d1f893c8bbcf5961ab",
       "empty_body": false
     },
     {
@@ -984,7 +984,7 @@
     "p10": 1927,
     "p25": 2159,
     "median": 2432.0,
-    "mean": 2503.35,
+    "mean": 2509.23,
     "p75": 2962,
     "p90": 3137,
     "max": 3734,
@@ -997,11 +997,6 @@
         "chapter": "CH042",
         "body_chars": 1289,
         "blob_sha": "6325df7d2bb1b364d9189a12776f559498e4d764"
-      },
-      {
-        "chapter": "CH041",
-        "body_chars": 1291,
-        "blob_sha": "3b901bc18171e4d46248ccc92a131c45b9767a05"
       }
     ],
     "below_1800": [
@@ -1009,11 +1004,6 @@
         "chapter": "CH042",
         "body_chars": 1289,
         "blob_sha": "6325df7d2bb1b364d9189a12776f559498e4d764"
-      },
-      {
-        "chapter": "CH041",
-        "body_chars": 1291,
-        "blob_sha": "3b901bc18171e4d46248ccc92a131c45b9767a05"
       },
       {
         "chapter": "CH024",
@@ -1024,6 +1014,11 @@
         "chapter": "CH047",
         "body_chars": 1599,
         "blob_sha": "59246cd2b3c04886a913b1e81a044ae1561c4374"
+      },
+      {
+        "chapter": "CH041",
+        "body_chars": 1726,
+        "blob_sha": "188428b25ce2cd0ed41a99fa7290e195ddf9d445"
       },
       {
         "chapter": "CH022",
@@ -1038,11 +1033,6 @@
         "blob_sha": "6325df7d2bb1b364d9189a12776f559498e4d764"
       },
       {
-        "chapter": "CH041",
-        "body_chars": 1291,
-        "blob_sha": "3b901bc18171e4d46248ccc92a131c45b9767a05"
-      },
-      {
         "chapter": "CH024",
         "body_chars": 1531,
         "blob_sha": "239a68de1250067611fa6b3428d6bc4362b0fc74"
@@ -1051,6 +1041,11 @@
         "chapter": "CH047",
         "body_chars": 1599,
         "blob_sha": "59246cd2b3c04886a913b1e81a044ae1561c4374"
+      },
+      {
+        "chapter": "CH041",
+        "body_chars": 1726,
+        "blob_sha": "188428b25ce2cd0ed41a99fa7290e195ddf9d445"
       },
       {
         "chapter": "CH022",
