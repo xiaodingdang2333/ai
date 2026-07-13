@@ -251,11 +251,11 @@
       "number": 21,
       "source_path": "txt/重生六岁，我带空间抢回军区大院/正文/第021章_三道题换一盏灯，大院孩子围过来.md",
       "formal_path": ".quality_runtime/formal/CH021_第021章_三道题换一盏灯_大院孩子围过来.md",
-      "blob_sha": "286cdef3ea6d99c17c5355c91161a06510909c36",
-      "normalized_copy_blob_sha": "286cdef3ea6d99c17c5355c91161a06510909c36",
-      "body_chars": 2183,
+      "blob_sha": "1f35b541fca3197d7553514ad13728018209c8b8",
+      "normalized_copy_blob_sha": "1f35b541fca3197d7553514ad13728018209c8b8",
+      "body_chars": 2108,
       "first_line": "# 第021章 三道题换一盏灯，大院孩子围过来",
-      "body_sha256": "116deaec39bec8616c3df2e12e22a6fb645ed358ec3e5fbac6f8cfb9934b6f7f",
+      "body_sha256": "478ca8fd13a20647b31bda9a972c017c3f1cb50e4e4c36426cc6ef55b952626e",
       "empty_body": false
     },
     {
@@ -908,12 +908,12 @@
     "p10": 1927,
     "p25": 2240,
     "median": 2435.5,
-    "mean": 2512.5,
+    "mean": 2511.49,
     "p75": 2962,
     "p90": 3137,
     "max": 3734,
     "early_10_mean": 2397.9,
-    "early_30_mean": 2299.4
+    "early_30_mean": 2296.9
   },
   "structural_result": "PASS"
 }

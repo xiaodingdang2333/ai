@@ -1,6 +1,6 @@
 {
   "workflow": "Legacy Novel Quality Diagnostic",
-  "commit": "44c24092b7bc1fa381cdb93dce0b61b8e4c50f94",
+  "commit": "dacd4ae5c37a9380947b1ccf0140f25d8b746051",
   "source_branch": "chatgpt/reaudit-liusui-20260713",
   "p0_step_outcome": "failure",
   "mode": "DIAGNOSTIC_ONLY_NO_READY_PROMOTION"

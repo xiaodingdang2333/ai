@@ -768,33 +768,29 @@
     },
     {
       "path": ".quality_runtime/formal/CH021_第021章_三道题换一盏灯_大院孩子围过来.md",
-      "blob_sha": "286cdef3ea6d99c17c5355c91161a06510909c36",
-      "total_body_chars": 2183,
-      "total_paragraphs": 98,
-      "single_sentence_paragraph_count": 54,
-      "single_sentence_paragraph_ratio": 0.551,
-      "short_paragraph_le20_count": 56,
-      "short_paragraph_le20_ratio": 0.5714,
-      "short_paragraph_le40_count": 92,
-      "short_paragraph_le40_ratio": 0.9388,
-      "dialogue_only_paragraph_count": 19,
-      "dialogue_only_paragraph_ratio": 0.1939,
-      "dialogue_led_paragraph_count": 21,
-      "dialogue_led_paragraph_ratio": 0.2143,
-      "dialogue_character_ratio": 0.2941,
-      "non_dialogue_narrative_character_ratio": 0.7059,
-      "max_dialogue_only_run": 3,
-      "max_short_paragraph_le20_run": 9,
-      "max_short_paragraph_le40_run": 37,
-      "max_sawtooth_run": 12,
+      "blob_sha": "1f35b541fca3197d7553514ad13728018209c8b8",
+      "total_body_chars": 2108,
+      "total_paragraphs": 33,
+      "single_sentence_paragraph_count": 2,
+      "single_sentence_paragraph_ratio": 0.0606,
+      "short_paragraph_le20_count": 2,
+      "short_paragraph_le20_ratio": 0.0606,
+      "short_paragraph_le40_count": 8,
+      "short_paragraph_le40_ratio": 0.2424,
+      "dialogue_only_paragraph_count": 3,
+      "dialogue_only_paragraph_ratio": 0.0909,
+      "dialogue_led_paragraph_count": 5,
+      "dialogue_led_paragraph_ratio": 0.1515,
+      "dialogue_character_ratio": 0.1575,
+      "non_dialogue_narrative_character_ratio": 0.8425,
+      "max_dialogue_only_run": 1,
+      "max_short_paragraph_le20_run": 1,
+      "max_short_paragraph_le40_run": 2,
+      "max_sawtooth_run": 1,
       "chapter": "CH021",
-      "result": "FAIL",
-      "absolute_failures": [
-        "SAWTOOTH_SHORT_PARAGRAPH_PAGE:max_short40_run>=24"
-      ],
-      "reference_band_review_hits": [
-        "REFERENCE_DRIFT:short20_ratio"
-      ]
+      "result": "PASS_NUMERIC",
+      "absolute_failures": [],
+      "reference_band_review_hits": []
     },
     {
       "path": ".quality_runtime/formal/CH022_第022章_公安信压在桌上_旧人牙子露了尾巴.md",
@@ -2186,11 +2182,9 @@
   "core_metrics": {
     "target_chapter_count": 74,
     "absolute_failures": [
-      "CH021",
       "CH025"
     ],
     "mandatory_body_review_chapters": [
-      "CH021",
       "CH023",
       "CH025",
       "CH068"
@@ -2204,7 +2198,6 @@
     }
   },
   "hit_locations": [
-    ".quality_runtime/formal/CH021_第021章_三道题换一盏灯_大院孩子围过来.md",
     ".quality_runtime/formal/CH023_第023章_金牙女人的红绳_牵出柳树沟旧账.md",
     ".quality_runtime/formal/CH025_第025章_槐树下开桌_三个孩子把题讲亮.md",
     ".quality_runtime/formal/CH068_第068章_她先把门打开一条缝.md"
