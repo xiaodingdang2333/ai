@@ -2,3 +2,4 @@ Trigger exact-current-blob diagnostic for CH001-CH074.
 PR synchronize run: 2026-07-13.
 Default-branch workflow installed; execute diagnostic.
 Rerun after title normalization and P0 prose revisions: CH021, CH023, CH025, CH068.
+Rerun after length-function revisions: CH041, CH042.
