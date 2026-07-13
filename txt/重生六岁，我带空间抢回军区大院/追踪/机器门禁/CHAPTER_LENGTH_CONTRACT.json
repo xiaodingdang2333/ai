@@ -1,0 +1,101 @@
+{
+  "chapter_length_contract_id": "LIUSUI_LEGACY_V22_LENGTH_20260713_V1",
+  "project": "重生六岁，我带空间抢回军区大院",
+  "migration_mode": "LEGACY_TEXT_V2_2_AUDIT",
+  "count_method": "NON_WHITESPACE_BODY_CHARACTERS",
+  "normal_target_min": 1800,
+  "normal_target_max": 3200,
+  "hard_min": 1500,
+  "short_exception_min": 1250,
+  "short_exception_allowed_functions": [
+    "RECOVERY",
+    "BRIDGE"
+  ],
+  "pivot_payoff_preferred_min": 2200,
+  "pivot_payoff_preferred_max": 3400,
+  "soft_max_review_threshold": 3600,
+  "exception_rule": "Legacy chapters below normal_target_min but not below hard_min require exact-current-blob function-completeness review. Chapters below hard_min require a pre-recorded RECOVERY or BRIDGE short exception and must remain at or above short_exception_min. No mechanical padding is permitted.",
+  "source_evidence": {
+    "evidence_status": "EVIDENCE_PARTIAL",
+    "reason": "The legacy repository does not contain an authoritative target-total-word or planned-chapter-count record. The contract therefore uses the exact-current-blob distribution of all 74 reviewed chapters plus the established female-frequency年代/重生/军区大院成长节奏. It does not infer a universal 3000-character target.",
+    "diagnostic_path": "txt/重生六岁，我带空间抢回军区大院/追踪/机器门禁/DIAGNOSTIC_CH001_CH074.json",
+    "diagnostic_blob_sha": "21b28884e3c91fc7a7d224846ea6dcad339a20b2",
+    "valid_chapter_count": 74,
+    "observed_profile": {
+      "min": 1531,
+      "p10": 1927,
+      "p25": 2159,
+      "median": 2432.0,
+      "mean": 2515.27,
+      "p75": 2962,
+      "p90": 3137,
+      "max": 3734
+    },
+    "target_total_words": null,
+    "planned_chapter_count": null,
+    "channel": "番茄女频",
+    "genre": [
+      "年代",
+      "重生",
+      "空间",
+      "军区大院",
+      "成长"
+    ],
+    "pacing_type": "事件推进与儿童关系成长交替"
+  },
+  "legacy_reviewed_below_normal": [
+    {
+      "chapter": "CH024",
+      "blob_sha": "239a68de1250067611fa6b3428d6bc4362b0fc74",
+      "body_chars": 1531,
+      "chapter_function": "BRIDGE",
+      "review_result": "PASS",
+      "reason": "地标仅缩小调查范围、公安独立核实、儿童不去现场，并完整桥接到CH025互助桌首次试摆；没有把核心现场结果提前切到本章之外。"
+    },
+    {
+      "chapter": "CH047",
+      "blob_sha": "59246cd2b3c04886a913b1e81a044ae1561c4374",
+      "body_chars": 1599,
+      "chapter_function": "PIVOT",
+      "review_result": "PASS",
+      "reason": "暴雨中人和资料不可兼顾的选择、成年门卫护路、资料两沓半受潮及停桌后果均在本章落地，冲突与代价完整。"
+    },
+    {
+      "chapter": "CH041",
+      "blob_sha": "188428b25ce2cd0ed41a99fa7290e195ddf9d445",
+      "body_chars": 1726,
+      "chapter_function": "RELATION",
+      "review_result": "PASS",
+      "reason": "大院传言造成未经审核探望风险，秦家制止；卫家承担等待与误工成本并完成第三次受控探视，关系只推进一格，功能已闭合。"
+    },
+    {
+      "chapter": "CH022",
+      "blob_sha": "47adff9c6bd1d441479feda24a7e02b8a50b3917",
+      "body_chars": 1733,
+      "chapter_function": "ADVANCE",
+      "review_result": "PASS",
+      "reason": "公安信、儿童碎片记忆的证据边界、第二日正式询问及收养程序继续推进全部完成，并自然把金牙红绳线交给CH023。"
+    },
+    {
+      "chapter": "CH042",
+      "blob_sha": "9df0d5e57c72099c08e945c3fe508a1870b30244",
+      "body_chars": 1736,
+      "chapter_function": "ADVANCE",
+      "review_result": "PASS",
+      "reason": "黑皮本清理、安七现实交叉证据、儿童记忆分级和砖窑现场行动准备均有实际步骤与责任人，完整推进至CH043现场勘查。"
+    }
+  ],
+  "short_exceptions": [],
+  "legacy_reviewed_over_soft_max": [
+    {
+      "chapter": "CH059",
+      "blob_sha": "ccc8db1f2cb6d69300ecab863b7119da91135a8c",
+      "body_chars": 3734,
+      "chapter_function": "RELATION",
+      "review_result": "PASS",
+      "reason": "全章围绕周向东选择帮助者、说出撕本原因、写名、保留错题并将家庭问题交给教师的单一连续冲突展开；拆章会切断同一次自习内的选择链，未发现支线堆叠或重复结算。"
+    }
+  ],
+  "status": "LOCKED",
+  "locked_date": "2026-07-13"
+}
