@@ -20,7 +20,7 @@
 - 多个网页版会话可以并行写不同书，但每本书必须有独立项目/分支/状态文件，通过 Git 快照接力，不依赖单个长聊天保存全部上下文。
 - 服务器已新增 Git worker 入口：`/home/admin/ai/scripts/novel-git-poller.py`、`novel-git-sample-worker.py`、`novel-git-upload-worker.py`；对应 systemd 模板在 `/home/admin/ai/systemd/`。worker 默认 dry-run，execute 模式才写文件/上传，且 Git 回写只提交本轮生成路径，不强推。
 - 服务器 Git worker 还包括 `/home/admin/ai/scripts/novel-git-write-worker.py`，用于上述显式代写队列。当前 timer：poller 每1分钟，upload 每1分钟，write 每2分钟，sample 每5分钟。
-- 服务器 worker 的唯一运行目录是`/home/admin/chatgpt-novel-production-system-runtime`，它与网页权威`origin/main`安全快进同步；`/home/admin/chatgpt-novel-production-system`可保留人工修改和旧本地状态，但不得再被 worker 直接读写。样本、代写、上传 worker 在执行前调用`novel-git-sync.py`，工作树脏、领先或分叉时必须失败而非覆盖；oneshot timer 用`OnUnitInactiveSec`重新计时，部署后以`systemctl list-timers`确认存在下一次触发。
+- 服务器 worker 的唯一运行目录是`/home/admin/chatgpt-novel-production-system-runtime`，它与网页权威`origin/main`安全快进同步；`/home/admin/chatgpt-novel-production-system`可保留人工修改和旧本地状态，但不得再被 worker 直接读写。所有 worker 通过`novel-git-worker-runner.py`持有同一把非阻塞运行锁，再执行`novel-git-sync.py`和实际任务；锁占用时本轮跳过、下周期重试。工作树脏、领先或分叉时必须失败而非覆盖；运行服务设`PYTHONDONTWRITEBYTECODE=1`，网页仓库忽略`__pycache__/`，避免缓存误触发脏树门禁；oneshot timer 用`OnUnitInactiveSec`重新计时，部署后以`systemctl list-timers`确认存在下一次触发。
 
 ## 2026-07-13 Creative Craft Profile 质量层
 

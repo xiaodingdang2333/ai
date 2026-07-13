@@ -4,7 +4,7 @@ Description=Process ChatGPT novel sample requests from Git
 [Service]
 Type=oneshot
 Environment=HOME=/root
+Environment=PYTHONDONTWRITEBYTECODE=1
 WorkingDirectory=/home/admin/ai
-ExecStartPre=/usr/bin/python3 /home/admin/ai/scripts/novel-git-sync.py --repo /home/admin/chatgpt-novel-production-system-runtime --json
-ExecStart=/usr/bin/python3 /home/admin/ai/scripts/novel-git-sample-worker.py --repo /home/admin/chatgpt-novel-production-system-runtime --execute --git-commit --git-push --limit 3 --json
+ExecStart=/usr/bin/python3 /home/admin/ai/scripts/novel-git-worker-runner.py --repo /home/admin/chatgpt-novel-production-system-runtime -- /usr/bin/python3 /home/admin/ai/scripts/novel-git-sample-worker.py --repo /home/admin/chatgpt-novel-production-system-runtime --execute --git-commit --git-push --limit 3 --json
 ExecStopPost=/usr/bin/chown -R admin:admin /home/admin/chatgpt-novel-production-system-runtime

@@ -4,6 +4,7 @@ Description=Scan ChatGPT novel Git repository for server jobs
 [Service]
 Type=oneshot
 Environment=HOME=/root
+Environment=PYTHONDONTWRITEBYTECODE=1
 WorkingDirectory=/home/admin/ai
-ExecStart=/usr/bin/python3 /home/admin/ai/scripts/novel-git-poller.py --repo /home/admin/chatgpt-novel-production-system-runtime --fetch --json
+ExecStart=/usr/bin/python3 /home/admin/ai/scripts/novel-git-worker-runner.py --repo /home/admin/chatgpt-novel-production-system-runtime -- /usr/bin/python3 /home/admin/ai/scripts/novel-git-poller.py --repo /home/admin/chatgpt-novel-production-system-runtime --json
 ExecStopPost=/usr/bin/chown -R admin:admin /home/admin/chatgpt-novel-production-system-runtime
