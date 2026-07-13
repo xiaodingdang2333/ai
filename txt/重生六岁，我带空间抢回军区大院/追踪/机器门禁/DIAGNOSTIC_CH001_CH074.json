@@ -299,11 +299,11 @@
       "number": 25,
       "source_path": "txt/重生六岁，我带空间抢回军区大院/正文/第025章_槐树下开桌，三个孩子把题讲亮.md",
       "formal_path": ".quality_runtime/formal/CH025_第025章_槐树下开桌_三个孩子把题讲亮.md",
-      "blob_sha": "ec016afeb28567dd72ec0d2c3997135eff1885ce",
-      "normalized_copy_blob_sha": "ec016afeb28567dd72ec0d2c3997135eff1885ce",
-      "body_chars": 2297,
+      "blob_sha": "877ae46aadad1995af61f0404c6232235194be1e",
+      "normalized_copy_blob_sha": "877ae46aadad1995af61f0404c6232235194be1e",
+      "body_chars": 2184,
       "first_line": "# 第025章 槐树下开桌，三个孩子把题讲亮",
-      "body_sha256": "a7be5b97de5da5d2ccd9f3ed3aa2ea2ec51bc7bedf7a2cfbc7980892cbed23e0",
+      "body_sha256": "fac9190765b7aac4602c4a271aced9ea8d92fd5b5e0d4784684ce575892ff111",
       "empty_body": false
     },
     {
@@ -906,14 +906,14 @@
     "valid_chapter_count": 74,
     "min": 1289,
     "p10": 1927,
-    "p25": 2240,
+    "p25": 2193,
     "median": 2435.5,
-    "mean": 2510.66,
+    "mean": 2509.14,
     "p75": 2962,
     "p90": 3137,
     "max": 3734,
     "early_10_mean": 2397.9,
-    "early_30_mean": 2294.87
+    "early_30_mean": 2291.1
   },
   "structural_result": "PASS"
 }

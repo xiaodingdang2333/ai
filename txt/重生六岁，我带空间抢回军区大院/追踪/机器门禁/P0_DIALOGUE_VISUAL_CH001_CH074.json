@@ -872,33 +872,29 @@
     },
     {
       "path": ".quality_runtime/formal/CH025_第025章_槐树下开桌_三个孩子把题讲亮.md",
-      "blob_sha": "ec016afeb28567dd72ec0d2c3997135eff1885ce",
-      "total_body_chars": 2297,
-      "total_paragraphs": 113,
-      "single_sentence_paragraph_count": 72,
-      "single_sentence_paragraph_ratio": 0.6372,
-      "short_paragraph_le20_count": 71,
-      "short_paragraph_le20_ratio": 0.6283,
-      "short_paragraph_le40_count": 105,
-      "short_paragraph_le40_ratio": 0.9292,
-      "dialogue_only_paragraph_count": 18,
-      "dialogue_only_paragraph_ratio": 0.1593,
-      "dialogue_led_paragraph_count": 22,
-      "dialogue_led_paragraph_ratio": 0.1947,
-      "dialogue_character_ratio": 0.229,
-      "non_dialogue_narrative_character_ratio": 0.771,
-      "max_dialogue_only_run": 2,
-      "max_short_paragraph_le20_run": 7,
-      "max_short_paragraph_le40_run": 52,
-      "max_sawtooth_run": 12,
+      "blob_sha": "877ae46aadad1995af61f0404c6232235194be1e",
+      "total_body_chars": 2184,
+      "total_paragraphs": 35,
+      "single_sentence_paragraph_count": 5,
+      "single_sentence_paragraph_ratio": 0.1429,
+      "short_paragraph_le20_count": 4,
+      "short_paragraph_le20_ratio": 0.1143,
+      "short_paragraph_le40_count": 10,
+      "short_paragraph_le40_ratio": 0.2857,
+      "dialogue_only_paragraph_count": 4,
+      "dialogue_only_paragraph_ratio": 0.1143,
+      "dialogue_led_paragraph_count": 5,
+      "dialogue_led_paragraph_ratio": 0.1429,
+      "dialogue_character_ratio": 0.1154,
+      "non_dialogue_narrative_character_ratio": 0.8846,
+      "max_dialogue_only_run": 1,
+      "max_short_paragraph_le20_run": 1,
+      "max_short_paragraph_le40_run": 2,
+      "max_sawtooth_run": 2,
       "chapter": "CH025",
-      "result": "FAIL",
-      "absolute_failures": [
-        "SAWTOOTH_SHORT_PARAGRAPH_PAGE:max_short40_run>=24"
-      ],
-      "reference_band_review_hits": [
-        "REFERENCE_DRIFT:short20_ratio"
-      ]
+      "result": "PASS_NUMERIC",
+      "absolute_failures": [],
+      "reference_band_review_hits": []
     },
     {
       "path": ".quality_runtime/formal/CH026_第026章_公用盒上锁_互助桌不收人情债.md",
@@ -2179,11 +2175,8 @@
   ],
   "core_metrics": {
     "target_chapter_count": 74,
-    "absolute_failures": [
-      "CH025"
-    ],
+    "absolute_failures": [],
     "mandatory_body_review_chapters": [
-      "CH025",
       "CH068"
     ],
     "missing_metric_chapters": [],
@@ -2195,10 +2188,9 @@
     }
   },
   "hit_locations": [
-    ".quality_runtime/formal/CH025_第025章_槐树下开桌_三个孩子把题讲亮.md",
     ".quality_runtime/formal/CH068_第068章_她先把门打开一条缝.md"
   ],
   "stale_blob_chapters": [],
   "post_fix_recalculation": "REQUIRED",
-  "p0_manifest_result": "FAIL"
+  "p0_manifest_result": "MANDATORY_BODY_REVIEW"
 }
