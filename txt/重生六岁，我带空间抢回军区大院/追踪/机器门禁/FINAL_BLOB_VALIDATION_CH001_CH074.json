@@ -1,0 +1,311 @@
+{
+  "gate": "FINAL_CURRENT_BLOB_SET_VALIDATION",
+  "source_commit": "f1704026ec173a90c479a104d1ba08705a2c1748",
+  "scope": {
+    "from": 1,
+    "to": 74
+  },
+  "chapter_blobs": [
+    {
+      "chapter": "CH001",
+      "blob_sha": "0220cce7663dd9db7fb71e44ad5732b161066973"
+    },
+    {
+      "chapter": "CH002",
+      "blob_sha": "e4b22e0b3f822d316e074dff324cc08e0bf93a10"
+    },
+    {
+      "chapter": "CH003",
+      "blob_sha": "e9b305798cc5c7b4cccdd12fbf3cf93ebd30633f"
+    },
+    {
+      "chapter": "CH004",
+      "blob_sha": "15aaa42909e3297291d70a0e4791248b7f05f630"
+    },
+    {
+      "chapter": "CH005",
+      "blob_sha": "5d3813d141f1fb7b4f53f924ec74697b2d7f97b0"
+    },
+    {
+      "chapter": "CH006",
+      "blob_sha": "71a7466665b2aad08a86c0da75792b13cd0509ad"
+    },
+    {
+      "chapter": "CH007",
+      "blob_sha": "6341e92f9fcb6ad44917d080d25cab4727ad5094"
+    },
+    {
+      "chapter": "CH008",
+      "blob_sha": "72aeb34bc4400ec1875e4831bc806adc221887cb"
+    },
+    {
+      "chapter": "CH009",
+      "blob_sha": "82c2dd214855495d3a05d8c8e48609f865d40618"
+    },
+    {
+      "chapter": "CH010",
+      "blob_sha": "61341c787a5aab5a5923f4b08fc655e4aee99fb1"
+    },
+    {
+      "chapter": "CH011",
+      "blob_sha": "e46bc66d085531d40852fcb70b5cb44742d0855c"
+    },
+    {
+      "chapter": "CH012",
+      "blob_sha": "29c075f06d6a9a32f3c9743c174713c343cc3f59"
+    },
+    {
+      "chapter": "CH013",
+      "blob_sha": "a9592a519fdf7ef289ba86172822b31d27e7e180"
+    },
+    {
+      "chapter": "CH014",
+      "blob_sha": "38be71ad933568ccdb725044b85a68b34e651c6f"
+    },
+    {
+      "chapter": "CH015",
+      "blob_sha": "a82e18f30b6f637cdeb6ed6ba8215762e3284542"
+    },
+    {
+      "chapter": "CH016",
+      "blob_sha": "9b2a85dc8d5df8790fe050c6f0775fb940eabb2d"
+    },
+    {
+      "chapter": "CH017",
+      "blob_sha": "b5119399b0e6703409c36ce23331b02230acd2ad"
+    },
+    {
+      "chapter": "CH018",
+      "blob_sha": "16a2835ba97c6e949278934487c5712d92053ae1"
+    },
+    {
+      "chapter": "CH019",
+      "blob_sha": "8ce1a0228f370520a614a876dbd52197f1188bca"
+    },
+    {
+      "chapter": "CH020",
+      "blob_sha": "af7c5f85c9bbfe8ccab537f847d26335f064f10f"
+    },
+    {
+      "chapter": "CH021",
+      "blob_sha": "1f35b541fca3197d7553514ad13728018209c8b8"
+    },
+    {
+      "chapter": "CH022",
+      "blob_sha": "47adff9c6bd1d441479feda24a7e02b8a50b3917"
+    },
+    {
+      "chapter": "CH023",
+      "blob_sha": "1cc311180af7639654a04d5a6570ef6e47c31b35"
+    },
+    {
+      "chapter": "CH024",
+      "blob_sha": "239a68de1250067611fa6b3428d6bc4362b0fc74"
+    },
+    {
+      "chapter": "CH025",
+      "blob_sha": "877ae46aadad1995af61f0404c6232235194be1e"
+    },
+    {
+      "chapter": "CH026",
+      "blob_sha": "d032ae3f943261f86abc61ed32ee1b97a993749c"
+    },
+    {
+      "chapter": "CH027",
+      "blob_sha": "c5217e8b9ea7ec53b24be924f7fc0c18d05de4d0"
+    },
+    {
+      "chapter": "CH028",
+      "blob_sha": "7890dbca960a872ae18e52c47211557c6521ae96"
+    },
+    {
+      "chapter": "CH029",
+      "blob_sha": "ee1d85c4f2c17462a3a881a3345ca0add672689f"
+    },
+    {
+      "chapter": "CH030",
+      "blob_sha": "69e37222ff8d9908bdfbf7bb23b20e0b4c1e7001"
+    },
+    {
+      "chapter": "CH031",
+      "blob_sha": "b3201cc0da45031a18abb6b468c0d381786525f6"
+    },
+    {
+      "chapter": "CH032",
+      "blob_sha": "ef298b18948f65eddd04e9965961180a2ad37066"
+    },
+    {
+      "chapter": "CH033",
+      "blob_sha": "ad1faeb6669e321ca66d661ca5d44030d4de6b8b"
+    },
+    {
+      "chapter": "CH034",
+      "blob_sha": "8706fc4c01047465f423eae794d626093924bf7b"
+    },
+    {
+      "chapter": "CH035",
+      "blob_sha": "099ff47f15b6502887b44ff55e6f7b8d22020f2b"
+    },
+    {
+      "chapter": "CH036",
+      "blob_sha": "37962c182f7582faa600397dc35ae1bcd3a0503e"
+    },
+    {
+      "chapter": "CH037",
+      "blob_sha": "c8d2c06f3f56c02b1bb3e9d99ed7c286215eecd2"
+    },
+    {
+      "chapter": "CH038",
+      "blob_sha": "eedeccafd8446284ad9bfe2f80e36a9342e487b1"
+    },
+    {
+      "chapter": "CH039",
+      "blob_sha": "c95e3934c8a9f5aff80ab509ecac48ffb86786c7"
+    },
+    {
+      "chapter": "CH040",
+      "blob_sha": "e9c1f2f3eef9c3e4fbc54520f001048af3a51180"
+    },
+    {
+      "chapter": "CH041",
+      "blob_sha": "188428b25ce2cd0ed41a99fa7290e195ddf9d445"
+    },
+    {
+      "chapter": "CH042",
+      "blob_sha": "9df0d5e57c72099c08e945c3fe508a1870b30244"
+    },
+    {
+      "chapter": "CH043",
+      "blob_sha": "942f11d5b56550ad2216f77a367c0be6d305371c"
+    },
+    {
+      "chapter": "CH044",
+      "blob_sha": "b585defd9447401e7339258aad074b0493e3fac0"
+    },
+    {
+      "chapter": "CH045",
+      "blob_sha": "0da7a8201222170128cde6431819fafa275d1c46"
+    },
+    {
+      "chapter": "CH046",
+      "blob_sha": "3670bdf5450b6b75833b265a8473698747f79d5f"
+    },
+    {
+      "chapter": "CH047",
+      "blob_sha": "59246cd2b3c04886a913b1e81a044ae1561c4374"
+    },
+    {
+      "chapter": "CH048",
+      "blob_sha": "a240ff1be513c94223b656e60d9ef4bd311d3051"
+    },
+    {
+      "chapter": "CH049",
+      "blob_sha": "9c75fe3322243b607df5c965654760f3f608cbae"
+    },
+    {
+      "chapter": "CH050",
+      "blob_sha": "43ba8634d182d56748d3180aa5892fc56eefa413"
+    },
+    {
+      "chapter": "CH051",
+      "blob_sha": "a177eb4efc6893c07d612afea47434d06c51264c"
+    },
+    {
+      "chapter": "CH052",
+      "blob_sha": "f6dd3259654d29b3394dcea4abbf6bf367ab1e48"
+    },
+    {
+      "chapter": "CH053",
+      "blob_sha": "3ddc407c2b5eb39883facc88115cf82dcf3e11b4"
+    },
+    {
+      "chapter": "CH054",
+      "blob_sha": "12a02e60068cc491c8a626765a9d4daefcc3a622"
+    },
+    {
+      "chapter": "CH055",
+      "blob_sha": "f4509848bef386f81b18bb82dad83dfb8bc51c6b"
+    },
+    {
+      "chapter": "CH056",
+      "blob_sha": "c5f9d8c7c8e357c3250a6e3402f19bf43ac93f81"
+    },
+    {
+      "chapter": "CH057",
+      "blob_sha": "c1f4aa3ef144007f12d6232b6c126742aa9d9136"
+    },
+    {
+      "chapter": "CH058",
+      "blob_sha": "5d94be3efd82ee8441227e3768d0e91001890c0e"
+    },
+    {
+      "chapter": "CH059",
+      "blob_sha": "ccc8db1f2cb6d69300ecab863b7119da91135a8c"
+    },
+    {
+      "chapter": "CH060",
+      "blob_sha": "ae6cc8f8dfd93b3c0c76da9ad22d36ec7f0f4b24"
+    },
+    {
+      "chapter": "CH061",
+      "blob_sha": "1c9efdc9f03e2665e564a8ba25720d68e9484972"
+    },
+    {
+      "chapter": "CH062",
+      "blob_sha": "21a6edeb8148a9eddd240279fe27b00c627b094c"
+    },
+    {
+      "chapter": "CH063",
+      "blob_sha": "06f46a0d8be5c0f9a0020971c70852caaa444650"
+    },
+    {
+      "chapter": "CH064",
+      "blob_sha": "8511493287a277519432af045ae65b533a5a60cb"
+    },
+    {
+      "chapter": "CH065",
+      "blob_sha": "c027e9599eeab3e27569f3fc92650655f17461f4"
+    },
+    {
+      "chapter": "CH066",
+      "blob_sha": "57d0c453de9af28aa14a85ad55e3b781fa0d17ad"
+    },
+    {
+      "chapter": "CH067",
+      "blob_sha": "47752d9894b5eeb183d49612455793c7df69b883"
+    },
+    {
+      "chapter": "CH068",
+      "blob_sha": "7975411dc8d16c9834c0a8c29bf4bd184d3cddd0"
+    },
+    {
+      "chapter": "CH069",
+      "blob_sha": "e3bc88d65a94f223e3f57c3baa81b464ba4c9172"
+    },
+    {
+      "chapter": "CH070",
+      "blob_sha": "bdb8f2ee35f3545811c70102743db85eefc26955"
+    },
+    {
+      "chapter": "CH071",
+      "blob_sha": "a7432c60de4ab9fcc0b88ee350e2c0a098ae1801"
+    },
+    {
+      "chapter": "CH072",
+      "blob_sha": "50b11f1df013476a7e3aeb8baa7ce2eb72406a7e"
+    },
+    {
+      "chapter": "CH073",
+      "blob_sha": "5e15594a1be1b7661154bdecc8c1c6523fd73769"
+    },
+    {
+      "chapter": "CH074",
+      "blob_sha": "140861d9c6ba68a7f5418e267b1f5dc27bfd71f2"
+    }
+  ],
+  "p0_manifest_blob_sha": "a1996a73b4da1a62c4b3d7233958ad951733cfca",
+  "length_manifest_blob_sha": "70ed66622b7fb9323af22a7d30845beff2e17958",
+  "ready_manifest_blob_sha": "546726652c2fbf1a86eaf153cafecdb2c663d9da",
+  "mismatches": [],
+  "final_blob_validation_result": "PASS"
+}

@@ -1,0 +1,389 @@
+{
+  "gate": "READY_PROMOTION_CURRENT_P0_MANIFEST_LOCK",
+  "patch_ref": "V2_2_DIALOGUE_VISUAL_ABSOLUTE_HARD_GATE_REAL_FAILURE_007",
+  "input_scope": {
+    "from": 1,
+    "to": 74,
+    "formal_dir": ".quality_runtime/formal"
+  },
+  "p0_manifest": "txt/重生六岁，我带空间抢回军区大院/追踪/机器门禁/P0_DIALOGUE_VISUAL_CH001_CH074.json",
+  "current_blobs": [
+    {
+      "chapter": "CH001",
+      "path": ".quality_runtime/formal/CH001_第001章_她被顶替了.md",
+      "blob_sha": "0220cce7663dd9db7fb71e44ad5732b161066973"
+    },
+    {
+      "chapter": "CH002",
+      "path": ".quality_runtime/formal/CH002_第002章_追上秦家的车.md",
+      "blob_sha": "e4b22e0b3f822d316e074dff324cc08e0bf93a10"
+    },
+    {
+      "chapter": "CH003",
+      "path": ".quality_runtime/formal/CH003_第003章_当场验身份.md",
+      "blob_sha": "e9b305798cc5c7b4cccdd12fbf3cf93ebd30633f"
+    },
+    {
+      "chapter": "CH004",
+      "path": ".quality_runtime/formal/CH004_第004章_养育费没要到_三姑来抢人.md",
+      "blob_sha": "15aaa42909e3297291d70a0e4791248b7f05f630"
+    },
+    {
+      "chapter": "CH005",
+      "path": ".quality_runtime/formal/CH005_第005章_公安带人_空间提前开启.md",
+      "blob_sha": "5d3813d141f1fb7b4f53f924ec74697b2d7f97b0"
+    },
+    {
+      "chapter": "CH006",
+      "path": ".quality_runtime/formal/CH006_第006章_秦家收养她_病房里打脸.md",
+      "blob_sha": "71a7466665b2aad08a86c0da75792b13cd0509ad"
+    },
+    {
+      "chapter": "CH007",
+      "path": ".quality_runtime/formal/CH007_第007章_进军区大院_她不是晦气.md",
+      "blob_sha": "6341e92f9fcb6ad44917d080d25cab4727ad5094"
+    },
+    {
+      "chapter": "CH008",
+      "path": ".quality_runtime/formal/CH008_第008章_姜红红哭上门_她入学测试过关.md",
+      "blob_sha": "72aeb34bc4400ec1875e4831bc806adc221887cb"
+    },
+    {
+      "chapter": "CH009",
+      "path": ".quality_runtime/formal/CH009_第009章_第一天上学_姜红红又来了.md",
+      "blob_sha": "82c2dd214855495d3a05d8c8e48609f865d40618"
+    },
+    {
+      "chapter": "CH010",
+      "path": ".quality_runtime/formal/CH010_第010章_书包被划_秦司令撑腰.md",
+      "blob_sha": "61341c787a5aab5a5923f4b08fc655e4aee99fb1"
+    },
+    {
+      "chapter": "CH011",
+      "path": ".quality_runtime/formal/CH011_第011章_她没有偷_姜红红藏了肉票.md",
+      "blob_sha": "e46bc66d085531d40852fcb70b5cb44742d0855c"
+    },
+    {
+      "chapter": "CH012",
+      "path": ".quality_runtime/formal/CH012_第012章_秦老太太低头_肉票比眼泪硬.md",
+      "blob_sha": "29c075f06d6a9a32f3c9743c174713c343cc3f59"
+    },
+    {
+      "chapter": "CH013",
+      "path": ".quality_runtime/formal/CH013_第013章_妇联门口_她把哭声按进规矩里.md",
+      "blob_sha": "a9592a519fdf7ef289ba86172822b31d27e7e180"
+    },
+    {
+      "chapter": "CH014",
+      "path": ".quality_runtime/formal/CH014_第014章_校长室亮规矩_她别想跪出特权.md",
+      "blob_sha": "38be71ad933568ccdb725044b85a68b34e651c6f"
+    },
+    {
+      "chapter": "CH015",
+      "path": ".quality_runtime/formal/CH015_第015章_单元卷发下来_她故意少拿三分.md",
+      "blob_sha": "a82e18f30b6f637cdeb6ed6ba8215762e3284542"
+    },
+    {
+      "chapter": "CH016",
+      "path": ".quality_runtime/formal/CH016_第016章_空间开小课桌_第一名不是白来的.md",
+      "blob_sha": "9b2a85dc8d5df8790fe050c6f0775fb940eabb2d"
+    },
+    {
+      "chapter": "CH017",
+      "path": ".quality_runtime/formal/CH017_第017章_收养表盖章前_姜家堂伯伸手了.md",
+      "blob_sha": "b5119399b0e6703409c36ce23331b02230acd2ad"
+    },
+    {
+      "chapter": "CH018",
+      "path": ".quality_runtime/formal/CH018_第018章_烈士怀表一亮_她亲口选秦家.md",
+      "blob_sha": "16a2835ba97c6e949278934487c5712d92053ae1"
+    },
+    {
+      "chapter": "CH019",
+      "path": ".quality_runtime/formal/CH019_第019章_姜家人堵门_秦家把账本摊开.md",
+      "blob_sha": "8ce1a0228f370520a614a876dbd52197f1188bca"
+    },
+    {
+      "chapter": "CH020",
+      "path": ".quality_runtime/formal/CH020_第020章_她不替坏人哭_姜家亲戚反被查.md",
+      "blob_sha": "af7c5f85c9bbfe8ccab537f847d26335f064f10f"
+    },
+    {
+      "chapter": "CH021",
+      "path": ".quality_runtime/formal/CH021_第021章_三道题换一盏灯_大院孩子围过来.md",
+      "blob_sha": "1f35b541fca3197d7553514ad13728018209c8b8"
+    },
+    {
+      "chapter": "CH022",
+      "path": ".quality_runtime/formal/CH022_第022章_公安信压在桌上_旧人牙子露了尾巴.md",
+      "blob_sha": "47adff9c6bd1d441479feda24a7e02b8a50b3917"
+    },
+    {
+      "chapter": "CH023",
+      "path": ".quality_runtime/formal/CH023_第023章_金牙女人的红绳_牵出柳树沟旧账.md",
+      "blob_sha": "1cc311180af7639654a04d5a6570ef6e47c31b35"
+    },
+    {
+      "chapter": "CH024",
+      "path": ".quality_runtime/formal/CH024_第024章_她画出歪脖槐_公安顺路追下去.md",
+      "blob_sha": "239a68de1250067611fa6b3428d6bc4362b0fc74"
+    },
+    {
+      "chapter": "CH025",
+      "path": ".quality_runtime/formal/CH025_第025章_槐树下开桌_三个孩子把题讲亮.md",
+      "blob_sha": "877ae46aadad1995af61f0404c6232235194be1e"
+    },
+    {
+      "chapter": "CH026",
+      "path": ".quality_runtime/formal/CH026_第026章_公用盒上锁_互助桌不收人情债.md",
+      "blob_sha": "d032ae3f943261f86abc61ed32ee1b97a993749c"
+    },
+    {
+      "chapter": "CH027",
+      "path": ".quality_runtime/formal/CH027_第027章_三颗小星连成线_空间给了公用奖励.md",
+      "blob_sha": "c5217e8b9ea7ec53b24be924f7fc0c18d05de4d0"
+    },
+    {
+      "chapter": "CH028",
+      "path": ".quality_runtime/formal/CH028_第028章_姜红红偷听墙根_反把蓝布包供出来.md",
+      "blob_sha": "7890dbca960a872ae18e52c47211557c6521ae96"
+    },
+    {
+      "chapter": "CH029",
+      "path": ".quality_runtime/formal/CH029_第029章_姜家堂伯再装糊涂_玻璃珠手链说了真话.md",
+      "blob_sha": "ee1d85c4f2c17462a3a881a3345ca0add672689f"
+    },
+    {
+      "chapter": "CH030",
+      "path": ".quality_runtime/formal/CH030_第030章_她不哭着换好处_只把河埠头说清楚.md",
+      "blob_sha": "69e37222ff8d9908bdfbf7bb23b20e0b4c1e7001"
+    },
+    {
+      "chapter": "CH031",
+      "path": ".quality_runtime/formal/CH031_第031章_黑皮本翻开_买家名字落进纸上.md",
+      "blob_sha": "b3201cc0da45031a18abb6b468c0d381786525f6"
+    },
+    {
+      "chapter": "CH032",
+      "path": ".quality_runtime/formal/CH032_第032章_青石镇来电_另一个孩子还活着.md",
+      "blob_sha": "ef298b18948f65eddd04e9965961180a2ad37066"
+    },
+    {
+      "chapter": "CH033",
+      "path": ".quality_runtime/formal/CH033_第033章_旧物照片摆开_她用童年见闻补上地址.md",
+      "blob_sha": "ad1faeb6669e321ca66d661ca5d44030d4de6b8b"
+    },
+    {
+      "chapter": "CH034",
+      "path": ".quality_runtime/formal/CH034_第034章_红章落进档案袋_她终于有了回家的路.md",
+      "blob_sha": "8706fc4c01047465f423eae794d626093924bf7b"
+    },
+    {
+      "chapter": "CH035",
+      "path": ".quality_runtime/formal/CH035_第035章_第一张期中复习表_她把规矩教给全班.md",
+      "blob_sha": "099ff47f15b6502887b44ff55e6f7b8d22020f2b"
+    },
+    {
+      "chapter": "CH036",
+      "path": ".quality_runtime/formal/CH036_第036章_铃响以前.md",
+      "blob_sha": "37962c182f7582faa600397dc35ae1bcd3a0503e"
+    },
+    {
+      "chapter": "CH037",
+      "path": ".quality_runtime/formal/CH037_第037章__我也能讲一道.md",
+      "blob_sha": "c8d2c06f3f56c02b1bb3e9d99ed7c286215eecd2"
+    },
+    {
+      "chapter": "CH038",
+      "path": ".quality_runtime/formal/CH038_第038章_谁把答案写在了桌肚里.md",
+      "blob_sha": "eedeccafd8446284ad9bfe2f80e36a9342e487b1"
+    },
+    {
+      "chapter": "CH039",
+      "path": ".quality_runtime/formal/CH039_第039章_成绩单没有替谁撒谎.md",
+      "blob_sha": "c95e3934c8a9f5aff80ab509ecac48ffb86786c7"
+    },
+    {
+      "chapter": "CH040",
+      "path": ".quality_runtime/formal/CH040_第040章_卫家来人.md",
+      "blob_sha": "e9c1f2f3eef9c3e4fbc54520f001048af3a51180"
+    },
+    {
+      "chapter": "CH041",
+      "path": ".quality_runtime/formal/CH041_第041章_不是每一次认亲都该立刻相拥.md",
+      "blob_sha": "188428b25ce2cd0ed41a99fa7290e195ddf9d445"
+    },
+    {
+      "chapter": "CH042",
+      "path": ".quality_runtime/formal/CH042_第042章_黑皮本的最后两页_指向一个没人留意的名字.md",
+      "blob_sha": "9df0d5e57c72099c08e945c3fe508a1870b30244"
+    },
+    {
+      "chapter": "CH043",
+      "path": ".quality_runtime/formal/CH043_第043章_砖窑墙上_十二道矮矮的刻痕.md",
+      "blob_sha": "942f11d5b56550ad2216f77a367c0be6d305371c"
+    },
+    {
+      "chapter": "CH044",
+      "path": ".quality_runtime/formal/CH044_第044章_卫梅把椅子搬到了门边.md",
+      "blob_sha": "b585defd9447401e7339258aad074b0493e3fac0"
+    },
+    {
+      "chapter": "CH045",
+      "path": ".quality_runtime/formal/CH045_第045章_她没有开口_却替全班找回了答案.md",
+      "blob_sha": "0da7a8201222170128cde6431819fafa275d1c46"
+    },
+    {
+      "chapter": "CH046",
+      "path": ".quality_runtime/formal/CH046_第046章_那句欢迎_第二天就不算数了吗.md",
+      "blob_sha": "3670bdf5450b6b75833b265a8473698747f79d5f"
+    },
+    {
+      "chapter": "CH047",
+      "path": ".quality_runtime/formal/CH047_第047章_书淋湿了_人不能丢.md",
+      "blob_sha": "59246cd2b3c04886a913b1e81a044ae1561c4374"
+    },
+    {
+      "chapter": "CH048",
+      "path": ".quality_runtime/formal/CH048_第048章_七双手.md",
+      "blob_sha": "a240ff1be513c94223b656e60d9ef4bd311d3051"
+    },
+    {
+      "chapter": "CH049",
+      "path": ".quality_runtime/formal/CH049_第049章_铁门之外.md",
+      "blob_sha": "9c75fe3322243b607df5c965654760f3f608cbae"
+    },
+    {
+      "chapter": "CH050",
+      "path": ".quality_runtime/formal/CH050_第050章_八十一分_不算赢.md",
+      "blob_sha": "43ba8634d182d56748d3180aa5892fc56eefa413"
+    },
+    {
+      "chapter": "CH051",
+      "path": ".quality_runtime/formal/CH051_第051章_七十三分里的_猜对.md",
+      "blob_sha": "a177eb4efc6893c07d612afea47434d06c51264c"
+    },
+    {
+      "chapter": "CH052",
+      "path": ".quality_runtime/formal/CH052_第052章_喜娃不是陈小喜.md",
+      "blob_sha": "f6dd3259654d29b3394dcea4abbf6bf367ab1e48"
+    },
+    {
+      "chapter": "CH053",
+      "path": ".quality_runtime/formal/CH053_第053章_别叫我小喜.md",
+      "blob_sha": "3ddc407c2b5eb39883facc88115cf82dcf3e11b4"
+    },
+    {
+      "chapter": "CH054",
+      "path": ".quality_runtime/formal/CH054_第054章_门锁在哪儿.md",
+      "blob_sha": "12a02e60068cc491c8a626765a9d4daefcc3a622"
+    },
+    {
+      "chapter": "CH055",
+      "path": ".quality_runtime/formal/CH055_第055章_那张_走.md",
+      "blob_sha": "f4509848bef386f81b18bb82dad83dfb8bc51c6b"
+    },
+    {
+      "chapter": "CH056",
+      "path": ".quality_runtime/formal/CH056_第056章_半碗玉米糊.md",
+      "blob_sha": "c5f9d8c7c8e357c3250a6e3402f19bf43ac93f81"
+    },
+    {
+      "chapter": "CH057",
+      "path": ".quality_runtime/formal/CH057_第057章_她漏掉了两个字.md",
+      "blob_sha": "c1f4aa3ef144007f12d6232b6c126742aa9d9136"
+    },
+    {
+      "chapter": "CH058",
+      "path": ".quality_runtime/formal/CH058_第058章_下次_来.md",
+      "blob_sha": "5d94be3efd82ee8441227e3768d0e91001890c0e"
+    },
+    {
+      "chapter": "CH059",
+      "path": ".quality_runtime/formal/CH059_第059章_空白本有了名字.md",
+      "blob_sha": "ccc8db1f2cb6d69300ecab863b7119da91135a8c"
+    },
+    {
+      "chapter": "CH060",
+      "path": ".quality_runtime/formal/CH060_第060章_纸上画着一只左手.md",
+      "blob_sha": "ae6cc8f8dfd93b3c0c76da9ad22d36ec7f0f4b24"
+    },
+    {
+      "chapter": "CH061",
+      "path": ".quality_runtime/formal/CH061_第061章_粮本空着一格.md",
+      "blob_sha": "1c9efdc9f03e2665e564a8ba25720d68e9484972"
+    },
+    {
+      "chapter": "CH062",
+      "path": ".quality_runtime/formal/CH062_第062章_地窖里多了一道线.md",
+      "blob_sha": "21a6edeb8148a9eddd240279fe27b00c627b094c"
+    },
+    {
+      "chapter": "CH063",
+      "path": ".quality_runtime/formal/CH063_第063章_那天她没有去互助桌.md",
+      "blob_sha": "06f46a0d8be5c0f9a0020971c70852caaa444650"
+    },
+    {
+      "chapter": "CH064",
+      "path": ".quality_runtime/formal/CH064_第064章_第一棵白菜写着她的名字.md",
+      "blob_sha": "8511493287a277519432af045ae65b533a5a60cb"
+    },
+    {
+      "chapter": "CH065",
+      "path": ".quality_runtime/formal/CH065_第065章_槐树下的第三根烟.md",
+      "blob_sha": "c027e9599eeab3e27569f3fc92650655f17461f4"
+    },
+    {
+      "chapter": "CH066",
+      "path": ".quality_runtime/formal/CH066_第066章_秤房里少了一只手套.md",
+      "blob_sha": "57d0c453de9af28aa14a85ad55e3b781fa0d17ad"
+    },
+    {
+      "chapter": "CH067",
+      "path": ".quality_runtime/formal/CH067_第067章_安字没有主人.md",
+      "blob_sha": "47752d9894b5eeb183d49612455793c7df69b883"
+    },
+    {
+      "chapter": "CH068",
+      "path": ".quality_runtime/formal/CH068_第068章_她先把门打开一条缝.md",
+      "blob_sha": "7975411dc8d16c9834c0a8c29bf4bd184d3cddd0"
+    },
+    {
+      "chapter": "CH069",
+      "path": ".quality_runtime/formal/CH069_第069章_一把钥匙_两边都能转.md",
+      "blob_sha": "e3bc88d65a94f223e3f57c3baa81b464ba4c9172"
+    },
+    {
+      "chapter": "CH070",
+      "path": ".quality_runtime/formal/CH070_第070章_没盖章的探望单.md",
+      "blob_sha": "bdb8f2ee35f3545811c70102743db85eefc26955"
+    },
+    {
+      "chapter": "CH071",
+      "path": ".quality_runtime/formal/CH071_第071章_桌子搬到走廊那天.md",
+      "blob_sha": "a7432c60de4ab9fcc0b88ee350e2c0a098ae1801"
+    },
+    {
+      "chapter": "CH072",
+      "path": ".quality_runtime/formal/CH072_第072章_那页没有被撕掉.md",
+      "blob_sha": "50b11f1df013476a7e3aeb8baa7ce2eb72406a7e"
+    },
+    {
+      "chapter": "CH073",
+      "path": ".quality_runtime/formal/CH073_第073章_轮值册上少了一个名字.md",
+      "blob_sha": "5e15594a1be1b7661154bdecc8c1c6523fd73769"
+    },
+    {
+      "chapter": "CH074",
+      "path": ".quality_runtime/formal/CH074_第074章_夜班铃响过三次.md",
+      "blob_sha": "140861d9c6ba68a7f5418e267b1f5dc27bfd71f2"
+    }
+  ],
+  "stale_blob_chapters": [],
+  "missing_metric_chapters": [],
+  "absolute_failures": [],
+  "mandatory_body_review_chapters": [],
+  "promotion_result": "PASS",
+  "ready_after_strong_qa_allowed": true,
+  "blocking_reasons": []
+}

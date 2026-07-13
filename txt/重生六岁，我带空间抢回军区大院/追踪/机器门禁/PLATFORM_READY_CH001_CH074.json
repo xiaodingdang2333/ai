@@ -1,0 +1,21 @@
+{
+  "gate": "PLATFORM_READY_CH001_CH074",
+  "book_title": "重生六岁，我带空间抢回军区大院",
+  "author": "桃枝醒醒",
+  "fanqie_book_id": "7654615479075490878",
+  "range": {
+    "from": 1,
+    "to": 74
+  },
+  "semantic_audit_path": "txt/重生六岁，我带空间抢回军区大院/追踪/旧稿新流程复审_第001-074章_20260713_FINAL.md",
+  "semantic_audit_blob_sha": "281d3dfef0f2591427c6b42a542c98cbeb89852b",
+  "p0_result": "PASS",
+  "length_gate_result": "PASS",
+  "structural_result": "PASS",
+  "current_blob_validation_result": "PASS",
+  "ready_promotion_result": "PASS",
+  "auto_upload_to_drafts": false,
+  "draft_upload_triggered": false,
+  "publication_triggered": false,
+  "platform_ready_result": "PASS"
+}
