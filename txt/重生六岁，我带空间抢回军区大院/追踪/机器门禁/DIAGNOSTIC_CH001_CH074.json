@@ -544,12 +544,12 @@
       "number": 42,
       "source_path": "txt/重生六岁，我带空间抢回军区大院/正文/第042章_黑皮本的最后两页，指向一个没人留意的名字.md",
       "formal_path": ".quality_runtime/formal/CH042_第042章_黑皮本的最后两页_指向一个没人留意的名字.md",
-      "blob_sha": "6325df7d2bb1b364d9189a12776f559498e4d764",
-      "normalized_copy_blob_sha": "6325df7d2bb1b364d9189a12776f559498e4d764",
-      "body_chars": 1289,
+      "blob_sha": "9df0d5e57c72099c08e945c3fe508a1870b30244",
+      "normalized_copy_blob_sha": "9df0d5e57c72099c08e945c3fe508a1870b30244",
+      "body_chars": 1736,
       "first_line": "# 第042章 黑皮本的最后两页，指向一个没人留意的名字",
       "has_markdown_title": true,
-      "body_sha256": "51d117e64e33b6626fbfd520218424e951cc610505c83bc04cac68da438cf055",
+      "body_sha256": "984f69b914f9b9c1a74fa077a432778dd9424d5cbc77bfa42379d5d3d8187ce7",
       "empty_body": false
     },
     {
@@ -980,11 +980,11 @@
   "length_profile": {
     "count_method": "NON_WHITESPACE_BODY_CHARACTERS",
     "valid_chapter_count": 74,
-    "min": 1289,
+    "min": 1531,
     "p10": 1927,
     "p25": 2159,
     "median": 2432.0,
-    "mean": 2509.23,
+    "mean": 2515.27,
     "p75": 2962,
     "p90": 3137,
     "max": 3734,
@@ -992,19 +992,8 @@
     "early_30_mean": 2291.1
   },
   "length_threshold_buckets": {
-    "below_1400": [
-      {
-        "chapter": "CH042",
-        "body_chars": 1289,
-        "blob_sha": "6325df7d2bb1b364d9189a12776f559498e4d764"
-      }
-    ],
+    "below_1400": [],
     "below_1800": [
-      {
-        "chapter": "CH042",
-        "body_chars": 1289,
-        "blob_sha": "6325df7d2bb1b364d9189a12776f559498e4d764"
-      },
       {
         "chapter": "CH024",
         "body_chars": 1531,
@@ -1024,15 +1013,15 @@
         "chapter": "CH022",
         "body_chars": 1733,
         "blob_sha": "47adff9c6bd1d441479feda24a7e02b8a50b3917"
+      },
+      {
+        "chapter": "CH042",
+        "body_chars": 1736,
+        "blob_sha": "9df0d5e57c72099c08e945c3fe508a1870b30244"
       }
     ],
     "below_2200": [
       {
-        "chapter": "CH042",
-        "body_chars": 1289,
-        "blob_sha": "6325df7d2bb1b364d9189a12776f559498e4d764"
-      },
-      {
         "chapter": "CH024",
         "body_chars": 1531,
         "blob_sha": "239a68de1250067611fa6b3428d6bc4362b0fc74"
@@ -1051,6 +1040,11 @@
         "chapter": "CH022",
         "body_chars": 1733,
         "blob_sha": "47adff9c6bd1d441479feda24a7e02b8a50b3917"
+      },
+      {
+        "chapter": "CH042",
+        "body_chars": 1736,
+        "blob_sha": "9df0d5e57c72099c08e945c3fe508a1870b30244"
       },
       {
         "chapter": "CH029",
