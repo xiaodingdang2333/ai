@@ -10,7 +10,10 @@ legacy `/home/admin/ai/tools/sonovel-tool/` checkout.
   rather than the release's bundled runtime.
 - Service: `sonovel.service`, loopback only on `127.0.0.1:7765`.
 - Resource limits: Java heap maximum `256M`, service memory maximum `384M`,
-  at most two chapter fetches at a time.
+  and one global SoNovel operation at a time. The local runtime config uses
+  SoNovel's default crawl concurrency of `50`; source-specific rules may
+  reduce that limit for protected sources. The runtime config is intentionally
+  outside Git, so restore this value after a fresh deployment.
 - Lifecycle: the wrapper starts the service only for a search, packet, or
   download and stops it after that operation. A shared file lock serializes
   those operations.
@@ -31,7 +34,11 @@ job. On success the server:
    download and always shows a fallback download link.
 
 The public page has per-client search/download rate limits and polls only
-while a job is active. Do not expose port 7765 directly.
+while a job is active. During a browser download it returns a bounded live
+snapshot from SoNovel's own journal: phase, discovered chapter count, current
+chapter log, and the latest log lines. The page refreshes that snapshot about
+once per second without keeping SoNovel resident. Do not expose port 7765
+directly.
 
 ## Commands
 

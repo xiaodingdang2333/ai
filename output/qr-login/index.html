@@ -216,7 +216,7 @@
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
       gap: 10px;
-      align-items: center;
+      align-items: start;
       padding: 10px 0;
       border-top: 1px solid #27303a;
     }
@@ -225,6 +225,25 @@
     .sonovel-result-meta, .sonovel-download-meta { color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
     .sonovel-download-actions { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px; }
     .sonovel-download-actions a { color: var(--accent-2); font-size: 13px; }
+    .sonovel-live-progress { display: grid; gap: 6px; margin-top: 8px; }
+    .sonovel-progress-head { color: var(--soft); font-size: 12px; line-height: 1.45; }
+    .sonovel-progress-head strong { color: var(--text); font-weight: 600; }
+    .sonovel-progressbar { width: min(440px, 100%); height: 7px; accent-color: var(--accent); }
+    .sonovel-live-log { margin: 2px 0 0; }
+    .sonovel-live-log summary { color: var(--muted); cursor: pointer; font-size: 12px; }
+    .sonovel-live-log-output {
+      max-height: 190px;
+      overflow: auto;
+      margin: 6px 0 0;
+      padding: 8px;
+      border: 1px solid #28313b;
+      border-radius: 4px;
+      background: #11171d;
+      color: #b8c4d2;
+      font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
     @media (max-width: 720px) {
       .sonovel-controls { grid-template-columns: 1fr; }
       .sonovel-result, .sonovel-download { grid-template-columns: 1fr; }
@@ -445,6 +464,9 @@
     .fm-table th, .fm-table td { padding: 8px; border-bottom: 1px solid #242b35; }
     .fm-table th { text-align: left; color: var(--muted); }
     .fm-table .size-cell, .fm-table .meta-cell { color: var(--muted); white-space: nowrap; text-align: right; }
+    .fm-select-cell { width: 30px; text-align: center; }
+    .fm-table input[data-fm-select] { width: 16px; height: 16px; margin: 0; cursor: pointer; accent-color: var(--accent); vertical-align: middle; }
+    .fm-dir-select-placeholder { display: inline-block; width: 16px; color: #586372; font-size: 14px; line-height: 16px; text-align: center; cursor: help; }
     .fm-link { color: var(--text); text-decoration: none; }
     .fm-link:hover { color: #ffb08b; text-decoration: underline; }
     .fm-name-cell { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -929,6 +951,24 @@
         <button type="button" class="secondary" data-sonovel-download="${Number(result.result_index)}" ${canDownload ? '' : 'disabled'}>下载并双存</button>
       </article>`).join('');
     }
+    function sonovelProgressMarkup(progress) {
+      if (!progress || typeof progress !== 'object') return '';
+      const total = Number(progress.total || 0);
+      const scheduled = Number(progress.scheduled || 0);
+      const hasTotal = Number.isFinite(total) && total > 0;
+      const hasScheduled = Number.isFinite(scheduled) && scheduled >= 0;
+      const phase = escapeHtml(progress.phase || '正在下载');
+      const current = progress.current_chapter ? ` · 当前日志：${escapeHtml(progress.current_chapter)}` : '';
+      const count = hasTotal
+        ? `已发起 ${Math.min(scheduled, total)}/${total} 章`
+        : (hasScheduled && scheduled ? `已发起 ${scheduled} 章` : '等待下载日志');
+      const progressBar = hasTotal
+        ? `<progress class="sonovel-progressbar" value="${Math.min(scheduled, total)}" max="${total}">${Math.round((Math.min(scheduled, total) / total) * 100)}%</progress>`
+        : '';
+      const logs = Array.isArray(progress.logs) ? progress.logs.filter(line => typeof line === 'string').slice(-18) : [];
+      const logPanel = `<details class="sonovel-live-log" open><summary>实时下载日志${logs.length ? `（最近 ${logs.length} 条）` : ''}</summary><pre class="sonovel-live-log-output">${escapeHtml(logs.join('\n') || '等待 SoNovel 输出…')}</pre></details>`;
+      return `<div class="sonovel-live-progress"><div class="sonovel-progress-head"><strong>${phase}</strong> · ${count}${current}</div>${progressBar}${logPanel}</div>`;
+    }
     function renderSonovelDownloads(data) {
       const active = data.active;
       const jobs = [];
@@ -945,9 +985,11 @@
           <div class="sonovel-result-title">《${escapeHtml(job.title || '未命名作品')}》${job.author ? ` — ${escapeHtml(job.author)}` : ''}</div>
           <div class="sonovel-download-meta"><span class="sample-badge ${sonovelStateClass(job.status)}">${escapeHtml(job.status || 'unknown')}</span> · ${escapeHtml((job.format || '').toUpperCase() || '--')} · ${escapeHtml(job.message || job.error || '')}</div>
           <div class="sonovel-download-meta">${job.archive_path ? `服务器：${escapeHtml(job.archive_path)} · ${sonovelSizeText(job.archive_size)}` : ''}${job.finished_at ? ` · ${escapeHtml(job.finished_at)}` : ''}</div>
+          ${job.status === 'running' ? sonovelProgressMarkup(job.progress) : ''}
         </div>
         <div class="sonovel-download-actions">${job.download_url ? `<a href="${escapeHtml(job.download_url)}" download>下载到本机</a>` : ''}</div>
       </article>`).join('');
+      sonovelDownloads.querySelectorAll('.sonovel-live-log-output').forEach(log => { log.scrollTop = log.scrollHeight; });
     }
     function triggerSonovelBrowserDownload(job) {
       if (!job || !job.job_id || !job.download_url || sonovelAutoDownloadedJobs.has(job.job_id)) return;
@@ -969,7 +1011,7 @@
       if (sonovelPoll) return;
       sonovelPoll = setInterval(() => {
         if (!document.hidden) loadSonovelStatus().catch(() => {});
-      }, 3000);
+      }, 1200);
     }
     async function loadSonovelStatus({ manual = false } = {}) {
       if (manual) setButtonLoading(sonovelRefreshBtn, true, '读取中');
@@ -1543,22 +1585,35 @@
       }
       fmBreadcrumb.innerHTML = html;
     }
+    function fmUpdateSelectionUi() {
+      const count = fmSelected.size;
+      fmDownloadBtn.disabled = count === 0;
+      fmDownloadBtn.textContent = count ? `下载选中（${count}）` : '下载选中';
+    }
     function fmRenderTable() {
-      fmSelected.clear();
-      fmDownloadBtn.disabled = true;
+      const availableFiles = new Set(fmEntries.filter(entry => entry.type === 'file').map(entry => entry.path));
+      for (const path of [...fmSelected]) {
+        if (!availableFiles.has(path)) fmSelected.delete(path);
+      }
       if (!fmEntries.length) {
         fmTbody.innerHTML = '<tr><td colspan="4" class="muted">此目录为空</td></tr>';
+        fmUpdateSelectionUi();
         return;
       }
       fmTbody.innerHTML = fmEntries.map((entry, i) => `<tr>
-        <td><input type="checkbox" data-idx="${i}" data-path="${escapeHtml(entry.path)}" ${entry.type === 'dir' ? 'disabled' : ''}></td>
+        <td class="fm-select-cell">${entry.type === 'dir'
+          ? '<span class="fm-dir-select-placeholder" title="目录请进入后选择其中的文件">—</span>'
+          : `<input type="checkbox" data-fm-select data-idx="${i}" data-path="${escapeHtml(entry.path)}" ${fmSelected.has(entry.path) ? 'checked' : ''} aria-label="选择 ${escapeHtml(entry.name)}">`}</td>
         <td><div class="fm-name-cell"><a href="#" class="fm-link" data-idx="${i}" data-path="${escapeHtml(entry.path)}" data-type="${entry.type}">${entry.type === 'dir' ? '[目录]' : '[文件]'} ${escapeHtml(entry.name)}</a>${entry.is_text ? `<button type="button" class="fm-copy-btn" data-path="${escapeHtml(entry.path)}" title="复制文件全部文本">复制</button>` : ''}</div></td>
         <td class="size-cell">${entry.type === 'dir' ? '-' : fmSizeText(entry.size)}</td>
         <td class="meta-cell">${fmTimeText(entry.mtime)}</td>
       </tr>`).join('');
+      fmUpdateSelectionUi();
     }
     async function fmLoad(path) {
-      fmCurrentPath = path;
+      const nextPath = String(path || '');
+      if (nextPath !== fmCurrentPath) fmSelected.clear();
+      fmCurrentPath = nextPath;
       fmStatus.textContent = '加载中...';
       try {
         const res = await fetch(`api/ai-files?path=${encodeURIComponent(path)}&t=${Date.now()}`);
@@ -1581,7 +1636,6 @@
     fmTbody.addEventListener('click', async event => {
       const link = event.target.closest('a.fm-link');
       const copyBtn = event.target.closest('.fm-copy-btn');
-      const cb = event.target.closest('input[type="checkbox"]');
       if (copyBtn) {
         const originalText = copyBtn.textContent;
         copyBtn.disabled = true;
@@ -1612,18 +1666,25 @@
         if (link.dataset.type === 'dir') fmLoad(link.dataset.path);
         else window.open(`api/ai-preview?path=${encodeURIComponent(link.dataset.path)}`, '_blank', 'noopener');
       }
-      if (cb) {
-        if (cb.checked) fmSelected.add(cb.dataset.path); else fmSelected.delete(cb.dataset.path);
-        fmDownloadBtn.disabled = fmSelected.size === 0;
-      }
+    });
+    fmTbody.addEventListener('change', event => {
+      const cb = event.target.closest('input[data-fm-select]');
+      if (!cb) return;
+      if (cb.checked) fmSelected.add(cb.dataset.path); else fmSelected.delete(cb.dataset.path);
+      fmUpdateSelectionUi();
     });
     fmSelectAllBtn.addEventListener('click', () => {
       const files = fmEntries.filter(entry => entry.type === 'file');
-      const select = fmSelected.size !== files.length;
+      if (!files.length) {
+        fmStatus.textContent = '当前目录只有文件夹；请进入目录后选择文件。';
+        fmUpdateSelectionUi();
+        return;
+      }
+      const select = files.some(file => !fmSelected.has(file.path));
       fmSelected.clear();
       if (select) files.forEach(file => fmSelected.add(file.path));
-      fmTbody.querySelectorAll('input[type="checkbox"]:not(:disabled)').forEach(cb => { cb.checked = select; });
-      fmDownloadBtn.disabled = fmSelected.size === 0;
+      fmRenderTable();
+      fmStatus.textContent = select ? `已选择 ${files.length} 个文件。` : '已取消选择。';
     });
     fmDownloadBtn.addEventListener('click', async () => {
       if (!fmSelected.size) return;

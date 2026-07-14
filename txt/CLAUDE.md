@@ -19,6 +19,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - 8090 小说模块使用独立的 `freeok/so-novel` v1.11.0 运行目录 `/home/admin/ai/tools/so-novel/`；旧 `tools/sonovel-tool` 仅保留历史，禁止作为运行时修改或调用。
 - 网页下载必须双存：先受控生成，再归档到 `/home/admin/ai/txt/download/`，同时经 `/api/ai-download` 提供给打开网页的设备下载。服务按需启动、串行运行，Java 堆上限 256M；不得公开 7765 端口。
+- 运行配置使用 SoNovel 默认 `concurrency=50`，仍受单任务、384MB service 内存上限和书源规则限流约束。8090 活动下载应每秒显示受限的 SoNovel 实时日志快照；不要为省启动时间改成常驻服务。
 - 仅处理公共领域、开放许可、官方允许下载或用户确认已获授权的材料；不得绕过付费、登录、DRM、验证码或反爬限制。
 
 ## Qimao Submission Rule Trigger

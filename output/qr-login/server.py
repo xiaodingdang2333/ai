@@ -58,10 +58,15 @@ SONOVEL_SEARCH_CACHE_LIMIT = 12
 SONOVEL_RECENT_DOWNLOAD_LIMIT = 12
 SONOVEL_SEARCH_MIN_INTERVAL_SECONDS = 2
 SONOVEL_DOWNLOAD_MIN_INTERVAL_SECONDS = 10
+SONOVEL_PROGRESS_CACHE_SECONDS = 1.0
+SONOVEL_JOURNAL_LINE_LIMIT = 140
+SONOVEL_PUBLIC_LOG_LINE_LIMIT = 18
 SONOVEL_WEB_STATE_LOCK = threading.RLock()
 SONOVEL_WEB_STATE_DATA = {"active": None, "recent": []}
 SONOVEL_SEARCH_CACHE = {}
 SONOVEL_REQUEST_TIMES = {}
+SONOVEL_PROGRESS_CACHE_LOCK = threading.Lock()
+SONOVEL_PROGRESS_CACHE = {"job_id": "", "checked_at": 0.0, "progress": None}
 
 SCHEDULED_TASKS = [
     {
@@ -407,7 +412,10 @@ def sonovel_public_job(job):
         "job_id", "title", "author", "format", "status", "message", "started_at",
         "finished_at", "archive_path", "archive_size", "download_url", "error",
     )
-    return {field: job[field] for field in fields if field in job}
+    public = {field: job[field] for field in fields if field in job}
+    if "progress" in job:
+        public["progress"] = sonovel_public_progress(job.get("progress"))
+    return public
 
 
 def cleanup_sonovel_search_cache():
@@ -443,6 +451,112 @@ def run_sonovel_command(arguments, timeout_seconds):
         detail = (result.stderr or result.stdout or "SoNovel command failed").strip()
         raise RuntimeError(detail[-1200:])
     return (result.stdout or "").strip()
+
+
+def sonovel_clean_log_line(value):
+    # Journal entries can contain terminal color controls. They make the browser
+    # log pane unreadable, so retain only plain text and a bounded line length.
+    line = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", str(value or "")).strip()
+    return line[:360]
+
+
+def sonovel_live_progress(job):
+    """Return a small, cached progress snapshot derived from SoNovel's own logs."""
+    job_id = str(job.get("job_id") or "")
+    now = time.monotonic()
+    with SONOVEL_PROGRESS_CACHE_LOCK:
+        cached = SONOVEL_PROGRESS_CACHE.get("progress")
+        if (
+            job_id
+            and SONOVEL_PROGRESS_CACHE.get("job_id") == job_id
+            and isinstance(cached, dict)
+            and now - float(SONOVEL_PROGRESS_CACHE.get("checked_at") or 0) < SONOVEL_PROGRESS_CACHE_SECONDS
+        ):
+            return dict(cached)
+
+    started_epoch = float(job.get("started_epoch") or time.time() - 120)
+    try:
+        result = subprocess.run(
+            [
+                "/usr/bin/journalctl",
+                "-u",
+                "sonovel.service",
+                "--since",
+                f"@{max(0, int(started_epoch) - 1)}",
+                "--no-pager",
+                "--output=cat",
+                "-n",
+                str(SONOVEL_JOURNAL_LINE_LIMIT),
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=2,
+        )
+        lines = [
+            cleaned
+            for raw in (result.stdout or "").splitlines()
+            if (cleaned := sonovel_clean_log_line(raw))
+            and ("SoNovel" in cleaned or "[INFO]" in cleaned or "[ERROR]" in cleaned or "<==" in cleaned)
+        ]
+    except (OSError, subprocess.SubprocessError):
+        lines = []
+
+    previous = job.get("progress") if isinstance(job.get("progress"), dict) else {}
+    seen_chapters = set(previous.get("seen_chapters") or [])
+    total = int(previous.get("total") or 0)
+    phase = str(previous.get("phase") or "正在启动")
+    current_chapter = str(previous.get("current_chapter") or "")
+
+    for line in lines:
+        total_match = re.search(r"共计\s*(\d+)\s*章", line)
+        if total_match:
+            total = max(total, int(total_match.group(1)))
+            phase = "正在准备正文"
+        if "正在解析章节目录" in line:
+            phase = "正在读取目录"
+        if "开始下载" in line:
+            phase = "正在抓取正文"
+        chapter_match = re.search(r"正在下载[:：]\s*【(.+?)】", line)
+        if not chapter_match:
+            chapter_match = re.search(r"正在下载[:：]\s*(.+?)(?:\s+间隔|$)", line)
+        if chapter_match:
+            current_chapter = chapter_match.group(1).strip()[:180]
+            chapter_no = re.search(r"第\s*0*(\d+)\s*章", current_chapter)
+            if chapter_no:
+                seen_chapters.add(int(chapter_no.group(1)))
+            phase = "正在抓取正文"
+        if "章节下载完毕" in line or "正在生成 " in line:
+            phase = "正在生成文件"
+        if "完成！" in line:
+            phase = "正在整理归档"
+
+    scheduled = len(seen_chapters)
+    if total:
+        scheduled = min(scheduled, total)
+    percent = round(scheduled * 100 / total) if total else None
+    progress = {
+        "phase": phase,
+        "total": total or None,
+        "scheduled": scheduled or None,
+        "percent": percent,
+        "current_chapter": current_chapter,
+        "logs": lines[-SONOVEL_PUBLIC_LOG_LINE_LIMIT:],
+        "updated_at": sonovel_now(),
+        # This remains internal and lets later journal tails retain an accurate
+        # count without returning a growing chapter list to the browser.
+        "seen_chapters": sorted(seen_chapters)[-1000:],
+    }
+    with SONOVEL_PROGRESS_CACHE_LOCK:
+        SONOVEL_PROGRESS_CACHE.update({"job_id": job_id, "checked_at": now, "progress": progress})
+    return progress
+
+
+def sonovel_public_progress(progress):
+    if not isinstance(progress, dict):
+        return None
+    fields = ("phase", "total", "scheduled", "percent", "current_chapter", "logs", "updated_at")
+    return {field: progress[field] for field in fields if field in progress}
 
 
 def is_public_sonovel_url(value):
@@ -618,6 +732,8 @@ def start_sonovel_download(search_id, result_index, output_format, remote_ip):
             "status": "running",
             "message": "正在启动 SoNovel 并下载，完成后会同时归档到服务器和下载到当前设备。",
             "started_at": sonovel_now(),
+            "started_epoch": time.time(),
+            "progress": {"phase": "正在启动", "logs": [], "updated_at": sonovel_now(), "seen_chapters": []},
         }
         SONOVEL_WEB_STATE_DATA["active"] = job
         persist_sonovel_web_state()
@@ -633,6 +749,25 @@ def start_sonovel_download(search_id, result_index, output_format, remote_ip):
 
 
 def sonovel_web_status():
+    with SONOVEL_WEB_STATE_LOCK:
+        active = SONOVEL_WEB_STATE_DATA.get("active")
+        active_snapshot = dict(active) if isinstance(active, dict) and active.get("status") == "running" else None
+    if active_snapshot:
+        progress = sonovel_live_progress(active_snapshot)
+        with SONOVEL_WEB_STATE_LOCK:
+            active = SONOVEL_WEB_STATE_DATA.get("active")
+            if isinstance(active, dict) and active.get("job_id") == active_snapshot.get("job_id") and active.get("status") == "running":
+                active["progress"] = progress
+                total = progress.get("total")
+                scheduled = progress.get("scheduled")
+                current = progress.get("current_chapter")
+                phase = progress.get("phase") or "正在下载"
+                if total and scheduled:
+                    active["message"] = f"{phase}：已发起 {scheduled}/{total} 章{f'，当前 {current}' if current else ''}"
+                elif current:
+                    active["message"] = f"{phase}：当前 {current}"
+                else:
+                    active["message"] = phase
     with SONOVEL_WEB_STATE_LOCK:
         archive_count = 0
         if SONOVEL_ARCHIVE_DIR.exists():
