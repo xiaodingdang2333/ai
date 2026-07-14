@@ -174,6 +174,10 @@ async function packet(title, author = '') {
     selected.url,
     '--title', title,
     '--author', author || selected.author || '未知',
+    '--front', process.env.NOVEL_PACKET_FRONT || '5',
+    '--middle', process.env.NOVEL_PACKET_MIDDLE || '2',
+    '--tail', process.env.NOVEL_PACKET_TAIL || '2',
+    '--concurrency', process.env.NOVEL_PACKET_CHAPTER_CONCURRENCY || '6',
   ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   if (result.status !== 0) throw new Error((result.stderr || result.stdout).trim());
   process.stdout.write(result.stdout);

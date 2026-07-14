@@ -14,10 +14,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -25,6 +27,8 @@ from typing import Any
 
 DEFAULT_REPO = Path("/home/admin/chatgpt-novel-production-system-runtime")
 SONOVEL_COMMAND = Path("/home/admin/ai/scripts/sonovel.sh")
+SONOVEL_CLIENT = Path("/home/admin/ai/scripts/sonovel-client.js")
+NODE_BIN = Path("/root/.nvm/versions/node/v22.22.3/bin/node")
 CODEX_BIN = Path("/root/.nvm/versions/node/v22.22.3/bin/codex")
 
 ALLOWED_BASES = {
@@ -34,6 +38,8 @@ ALLOWED_BASES = {
     "user_authorized_material",
 }
 RUNNING_LEASE_SECONDS = 15 * 60
+DEFAULT_BOOK_CONCURRENCY = 2
+DEFAULT_PACKET_CHAPTER_CONCURRENCY = 6
 
 
 def now_iso() -> str:
@@ -123,10 +129,39 @@ def legal_basis_for(request: dict[str, Any], book: dict[str, Any]) -> tuple[str,
     return str(basis), allowed
 
 
-def run_packet(book: dict[str, Any], timeout_seconds: int) -> tuple[bool, str]:
+def packet_scope_for(request: dict[str, Any]) -> dict[str, int | str]:
+    """Normalize the bounded structural packet contract.
+
+    A packet is intentionally not a whole-book download.  Request fields are
+    optional to retain compatibility with existing Git requests.
+    """
+    scope = str(request.get("material_scope") or "key_chapter_packet")
+    if scope != "key_chapter_packet":
+        raise ValueError("only key_chapter_packet is supported by the automatic worker")
+    return {
+        "scope": scope,
+        "front": min(8, positive_int(request.get("packet_front_chapters"), 5)),
+        "middle": min(4, positive_int(request.get("packet_middle_chapters"), 2)),
+        "tail": min(4, positive_int(request.get("packet_tail_chapters"), 2)),
+        "chapter_concurrency": min(12, positive_int(request.get("packet_chapter_concurrency"), DEFAULT_PACKET_CHAPTER_CONCURRENCY)),
+    }
+
+
+def run_packet(book: dict[str, Any], timeout_seconds: int, packet_scope: dict[str, int | str]) -> tuple[bool, str]:
     title = str(book.get("title") or "")
     author = str(book.get("author") or "")
-    command = [str(SONOVEL_COMMAND), "packet", title, author]
+    # Do not take sonovel.sh's global operation lock here.  Packet jobs use the
+    # native service only for identity search, then fetch a small bounded
+    # chapter set.  This permits two independent books to progress while the
+    # 8090 official UI remains available for interactive full downloads.
+    command = [str(NODE_BIN), str(SONOVEL_CLIENT), "packet", title, author]
+    environment = os.environ.copy()
+    environment.update({
+        "NOVEL_PACKET_FRONT": str(packet_scope["front"]),
+        "NOVEL_PACKET_MIDDLE": str(packet_scope["middle"]),
+        "NOVEL_PACKET_TAIL": str(packet_scope["tail"]),
+        "NOVEL_PACKET_CHAPTER_CONCURRENCY": str(packet_scope["chapter_concurrency"]),
+    })
     try:
         result = subprocess.run(
             command,
@@ -134,9 +169,8 @@ def run_packet(book: dict[str, Any], timeout_seconds: int) -> tuple[bool, str]:
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            # Account for the bounded on-demand Java service startup before the
-            # per-book packet timeout starts doing useful work.
-            timeout=timeout_seconds + 40,
+            env=environment,
+            timeout=timeout_seconds + 15,
         )
     except subprocess.TimeoutExpired:
         return False, f"single book packet timed out after {timeout_seconds}s"
@@ -239,6 +273,7 @@ def export_web_packet(raw_output: str, packet_path: Path, book: dict[str, Any]) 
                 "mirror_chapter_count": source.get("mirror_chapter_count"),
                 "identity_verification_required": True,
                 "full_text_storage": "server_local_only",
+                "acquisition": source.get("acquisition", {}),
             },
             "source_quality_audit": source_quality,
             "selection": {
@@ -413,9 +448,10 @@ def status_for_request(
     packet_paths: list[Path] = []
     effective = 0
 
-    for index, book in enumerate(books, 1):
-        if not isinstance(book, dict):
-            continue
+    packet_scope = packet_scope_for(request)
+    requested_provider = str(request.get("acquisition_provider") or "auto")
+
+    def candidate_result(index: int, book: dict[str, Any]) -> tuple[dict[str, Any], Path | None]:
         title = str(book.get("title") or "")
         author = str(book.get("author") or "")
         basis, automation_allowed = legal_basis_for(request, book)
@@ -424,151 +460,160 @@ def status_for_request(
             "author": author,
             "legal_access_status": basis,
             "identity_confidence": book.get("identity_confidence", "unknown"),
+            "provider": "sonovel_key_chapter_packet",
+            "material_scope": packet_scope["scope"],
         }
-        created_packet_path: Path | None = None
-        if execute:
-            pending_record = {
+        if requested_provider not in {"auto", "sonovel_key_chapter_packet"}:
+            return ({
                 **base_record,
-                "acquisition_status": "running",
-                "quality_status": "checking",
-            }
-            publish_progress(
-                repo,
-                request_path,
-                request,
-                progress_payload(
-                    request,
-                    request_path,
-                    repo,
-                    "acquiring_sample",
-                    f"Attempting candidate {index}/{len(books)}.",
-                    [*status_books, pending_record],
-                    index,
-                    {"title": title, "author": author, "channel": book.get("channel")},
+                "acquisition_status": "manual_required",
+                "quality_status": "unchecked",
+                "failure_reason": (
+                    f"PROVIDER_NOT_PROMOTED: {requested_provider} is benchmark-only; "
+                    "run an authorized source benchmark before production routing"
                 ),
-                git_commit,
-                git_push,
-                f"samples: progress {request_id} {index}/{len(books)}",
-            )
+            }, None)
         if basis not in ALLOWED_BASES or not automation_allowed:
-            status_books.append({
+            return ({
                 **base_record,
                 "acquisition_status": "manual_required",
                 "quality_status": "unchecked",
                 "failure_reason": "MANUAL_MATERIAL_REQUIRED: no explicit allowed automated acquisition basis",
-            })
-            continue
-
+            }, None)
         if not execute:
-            status_books.append({
+            return ({
                 **base_record,
                 "acquisition_status": "pending",
                 "quality_status": "unchecked",
                 "failure_reason": "dry-run: packet command not executed",
-            })
-            continue
-
-        ok, output = run_packet(book, timeout_seconds)
-        if ok:
-            source_quality = audit_local_study_packet(output)
-            if not source_quality["passed"]:
-                status_books.append({
-                    **base_record,
-                    "acquisition_status": "failed",
-                    "quality_status": "quality_rejected",
-                    "failure_reason": "SOURCE_QUALITY_AUDIT: " + "; ".join(source_quality["reasons"]),
-                    "source_quality_audit": source_quality,
-                })
-            else:
-                packet_dir.mkdir(parents=True, exist_ok=True)
-                packet_path = packet_dir / f"{index:03d}_{safe_slug(title, 'book')}.json"
-                packet = export_web_packet(output, packet_path, book)
-                packet_paths.append(packet_path)
-                created_packet_path = packet_path
-                effective += 1
-                status_books.append({
-                    **base_record,
-                    "acquisition_status": "packet_ready",
-                    "quality_status": "effective",
-                    "packet_path": str(packet_path.relative_to(repo)),
-                    "packet_kind": packet.get("packet_kind"),
-                    "packet_generated_at": now_iso(),
-                    "packet_git_push_status": "pending",
-                    "web_analysis_ready": packet.get("web_analysis_ready"),
-                    "source_quality_audit": source_quality,
-                })
-        else:
-            status_books.append({
+            }, None)
+        started_at = time.monotonic()
+        ok, output = run_packet(book, timeout_seconds, packet_scope)
+        elapsed_seconds = round(time.monotonic() - started_at, 2)
+        if not ok:
+            return ({
                 **base_record,
                 "acquisition_status": "failed",
                 "quality_status": "failed",
                 "failure_reason": output[:1000],
-            })
-        if execute:
-            git_result = publish_progress(
-                repo,
-                request_path,
-                request,
-                progress_payload(
-                    request,
-                    request_path,
-                    repo,
-                    "candidate_finished",
-                    f"Finished candidate {index}/{len(books)}.",
-                    status_books,
-                    index,
-                    {"title": title, "author": author, "channel": book.get("channel")},
-                ),
-                git_commit,
-                git_push,
-                f"samples: progress {request_id} effective {effective}",
-                [created_packet_path] if created_packet_path else None,
-            )
-            if created_packet_path:
-                if not git_commit:
-                    push_status = "not_requested"
-                elif git_result and git_result.get("status") == "committed":
-                    push_status = str(git_result.get("push_status") or "committed_local")
-                else:
-                    push_status = "commit_failed"
-                status_books[-1]["packet_git_push_status"] = push_status
-                if push_status in {"pushed", "committed_local"}:
-                    status_books[-1]["packet_uploaded_at"] = now_iso()
-                publish_progress(
-                    repo,
-                    request_path,
-                    request,
-                    progress_payload(
-                        request,
-                        request_path,
-                        repo,
-                        "packet_git_status",
-                        f"Packet Git status: {push_status}.",
-                        status_books,
-                        index,
-                        {"title": title, "author": author, "channel": book.get("channel")},
-                    ),
-                    git_commit,
-                    git_push,
-                    f"samples: packet Git status {request_id} {index}",
-                )
-        if effective >= min_effective:
-            break
+                "performance": {"elapsed_seconds": elapsed_seconds},
+            }, None)
+        source_quality = audit_local_study_packet(output)
+        if not source_quality["passed"]:
+            return ({
+                **base_record,
+                "acquisition_status": "failed",
+                "quality_status": "quality_rejected",
+                "failure_reason": "SOURCE_QUALITY_AUDIT: " + "; ".join(source_quality["reasons"]),
+                "source_quality_audit": source_quality,
+                "performance": {"elapsed_seconds": elapsed_seconds},
+            }, None)
+        packet_dir.mkdir(parents=True, exist_ok=True)
+        packet_path = packet_dir / f"{index:03d}_{safe_slug(title, 'book')}.json"
+        packet = export_web_packet(output, packet_path, book)
+        acquisition = packet.get("source", {}).get("acquisition", {})
+        return ({
+            **base_record,
+            "acquisition_status": "packet_ready",
+            "quality_status": "effective",
+            "packet_path": str(packet_path.relative_to(repo)),
+            "packet_kind": packet.get("packet_kind"),
+            "packet_generated_at": now_iso(),
+            "packet_git_push_status": "pending",
+            "web_analysis_ready": packet.get("web_analysis_ready"),
+            "source_quality_audit": source_quality,
+            "performance": {
+                "elapsed_seconds": elapsed_seconds,
+                "selected_chapter_count": acquisition.get("requested_positions"),
+                "chapter_concurrency": acquisition.get("chapter_concurrency"),
+            },
+        }, packet_path)
 
-    skipped = []
-    if len(all_books) > len(status_books):
-        skipped = [
-            {
-                "title": str(book.get("title") or ""),
-                "author": str(book.get("author") or ""),
-                "channel": book.get("channel"),
-                "acquisition_status": "not_attempted",
-                "quality_status": "not_attempted",
-                "skip_reason": "target_effective_sample_count reached" if effective >= min_effective else "max_attempts reached",
-            }
-            for book in all_books[len(status_books):]
-            if isinstance(book, dict)
-        ]
+    attempted_indexes: set[int] = set()
+    cursor = 0
+    while cursor < len(books) and effective < min_effective:
+        remaining = min_effective - effective
+        batch_size = min(DEFAULT_BOOK_CONCURRENCY, remaining, len(books) - cursor)
+        batch = [(cursor + offset + 1, books[cursor + offset]) for offset in range(batch_size)
+                 if isinstance(books[cursor + offset], dict)]
+        cursor += batch_size
+        if not batch:
+            continue
+        if execute:
+            pending = [
+                {
+                    "title": str(book.get("title") or ""),
+                    "author": str(book.get("author") or ""),
+                    "legal_access_status": legal_basis_for(request, book)[0],
+                    "identity_confidence": book.get("identity_confidence", "unknown"),
+                    "provider": "sonovel_key_chapter_packet",
+                    "material_scope": packet_scope["scope"],
+                    "acquisition_status": "running",
+                    "quality_status": "checking",
+                }
+                for _, book in batch
+            ]
+            publish_progress(
+                repo, request_path, request,
+                progress_payload(
+                    request, request_path, repo, "acquiring_sample_batch",
+                    f"Attempting {len(batch)} candidate(s) concurrently; target is {min_effective} effective packet(s).",
+                    [*status_books, *pending], batch[0][0],
+                    {"title": str(batch[0][1].get("title") or ""), "author": str(batch[0][1].get("author") or ""), "channel": batch[0][1].get("channel")},
+                ), git_commit, git_push, f"samples: started batch {request_id} {batch[0][0]}",
+            )
+        results: dict[int, tuple[dict[str, Any], Path | None]] = {}
+        with ThreadPoolExecutor(max_workers=len(batch)) as pool:
+            futures = {pool.submit(candidate_result, index, book): index for index, book in batch}
+            for future in as_completed(futures):
+                results[futures[future]] = future.result()
+        for index, book in batch:
+            record, created_packet_path = results[index]
+            attempted_indexes.add(index)
+            status_books.append(record)
+            if record.get("quality_status") == "effective":
+                effective += 1
+                if created_packet_path:
+                    packet_paths.append(created_packet_path)
+            if execute:
+                git_result = publish_progress(
+                    repo, request_path, request,
+                    progress_payload(
+                        request, request_path, repo, "candidate_finished",
+                        f"Finished candidate {index}/{len(books)}.", status_books, index,
+                        {"title": record["title"], "author": record["author"], "channel": book.get("channel")},
+                    ), git_commit, git_push, f"samples: progress {request_id} effective {effective}",
+                    [created_packet_path] if created_packet_path else None,
+                )
+                if created_packet_path:
+                    push_status = "not_requested" if not git_commit else (
+                        str(git_result.get("push_status") or "committed_local")
+                        if git_result and git_result.get("status") == "committed" else "commit_failed"
+                    )
+                    record["packet_git_push_status"] = push_status
+                    if push_status in {"pushed", "committed_local"}:
+                        record["packet_uploaded_at"] = now_iso()
+                    publish_progress(
+                        repo, request_path, request,
+                        progress_payload(
+                            request, request_path, repo, "packet_git_status",
+                            f"Packet Git status: {push_status}.", status_books, index,
+                            {"title": record["title"], "author": record["author"], "channel": book.get("channel")},
+                        ), git_commit, git_push, f"samples: packet Git status {request_id} {index}",
+                    )
+
+    skipped = [
+        {
+            "title": str(book.get("title") or ""),
+            "author": str(book.get("author") or ""),
+            "channel": book.get("channel"),
+            "acquisition_status": "not_attempted",
+            "quality_status": "not_attempted",
+            "skip_reason": "target_effective_sample_count reached" if effective >= min_effective else "max_attempts reached",
+        }
+        for index, book in enumerate(all_books, 1)
+        if isinstance(book, dict) and index not in attempted_indexes
+    ]
 
     status = result_status(effective, min_effective, status_books)
 

@@ -7,6 +7,7 @@ import re
 import time
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -116,14 +117,32 @@ def selected_indices(total, front, middle, tail):
     return sorted(result)
 
 
+def fetch_chapter(index, links):
+    """Fetch and parse one chapter without mutating shared packet state."""
+    title, url = links[index]
+    try:
+        parser_ = ChapterTextParser()
+        parser_.feed(fetch(url))
+        text = parser_.text()
+    except Exception as exc:  # Network/source errors are handled by nearby fallback.
+        return index, title, url, None, str(exc)[:300]
+    if len(text) < 100:
+        return index, title, url, None, "chapter_text_too_short"
+    return index, title, url, text, None
+
+
 def main():
     parser = argparse.ArgumentParser(description="Fetch only the chapters needed for structural novel study")
     parser.add_argument("url")
     parser.add_argument("--title", required=True)
     parser.add_argument("--author", default="未知")
-    parser.add_argument("--front", type=int, default=10)
-    parser.add_argument("--middle", type=int, default=3)
-    parser.add_argument("--tail", type=int, default=3)
+    # A structural packet does not need a whole book.  Nine chapters cover the
+    # opening promise, mid-book mechanism and late-stage payoff while keeping
+    # acquisition bounded for large sample queues.
+    parser.add_argument("--front", type=int, default=5)
+    parser.add_argument("--middle", type=int, default=2)
+    parser.add_argument("--tail", type=int, default=2)
+    parser.add_argument("--concurrency", type=int, default=6)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
 
@@ -150,37 +169,46 @@ def main():
     records = []
     used = set()
     failures = []
-    for position, requested_index in enumerate(indices, 1):
-        candidates = [requested_index]
-        for distance in range(1, 5):
-            candidates.extend((requested_index + distance, requested_index - distance))
-        for index in candidates:
-            if index < 0 or index >= len(links) or index in used:
-                continue
-            title, url = links[index]
-            try:
-                parser_ = ChapterTextParser()
-                parser_.feed(fetch(url))
-                text = parser_.text()
-            except Exception as exc:
-                failures.append({"index": index + 1, "title": title, "reason": str(exc)[:300]})
-                continue
-            if len(text) < 100:
-                failures.append({"index": index + 1, "title": title, "reason": "chapter_text_too_short"})
-                continue
-            filename = f"{index + 1:04d}-{safe_name(title)}.txt"
-            (selected_dir / filename).write_text(f"{title}\n\n{text}\n", encoding="utf-8")
-            records.append({
-                "index": index + 1,
-                "title": title,
-                "url": url,
-                "characters": len(re.sub(r"\s+", "", text)),
-                "file": str(selected_dir / filename),
-            })
-            used.add(index)
-            break
-        if position < len(indices):
-            time.sleep(0.3)
+    primary_results = {}
+    concurrency = max(1, min(12, args.concurrency))
+    # Primary chapter positions are independent.  Fetch them concurrently;
+    # nearby fallback is deliberately conservative and only runs for failures.
+    with ThreadPoolExecutor(max_workers=min(concurrency, len(indices))) as pool:
+        futures = {pool.submit(fetch_chapter, index, links): index for index in indices}
+        for future in as_completed(futures):
+            index, title, url, text, reason = future.result()
+            primary_results[index] = (title, url, text, reason)
+
+    for requested_index in indices:
+        title, url, text, reason = primary_results[requested_index]
+        chosen_index = requested_index
+        if text is None:
+            failures.append({"index": requested_index + 1, "title": title, "reason": reason})
+            # Do not turn a source failure into an unbounded retry loop.  At
+            # most eight neighbouring chapter positions are attempted.
+            for distance in range(1, 5):
+                for index in (requested_index + distance, requested_index - distance):
+                    if index < 0 or index >= len(links) or index in used:
+                        continue
+                    _, title, url, text, reason = fetch_chapter(index, links)
+                    if text is not None:
+                        chosen_index = index
+                        break
+                    failures.append({"index": index + 1, "title": title, "reason": reason})
+                if text is not None:
+                    break
+        if text is None or chosen_index in used:
+            continue
+        filename = f"{chosen_index + 1:04d}-{safe_name(title)}.txt"
+        (selected_dir / filename).write_text(f"{title}\n\n{text}\n", encoding="utf-8")
+        records.append({
+            "index": chosen_index + 1,
+            "title": title,
+            "url": url,
+            "characters": len(re.sub(r"\s+", "", text)),
+            "file": str(selected_dir / filename),
+        })
+        used.add(chosen_index)
 
     if len(records) < min(3, len(indices)):
         raise SystemExit(f"Too few usable chapters: {len(records)}/{len(indices)}; failures={failures[:5]}")
@@ -194,6 +222,12 @@ def main():
         "mirror_first_chapter_titles": [title for title, _ in links[:3]],
         "selected_chapter_count": len(records),
         "selected_characters": sum(item["characters"] for item in records),
+        "acquisition": {
+            "scope": "key_chapter_packet",
+            "requested_positions": len(indices),
+            "chapter_concurrency": concurrency,
+            "fallback_attempt_count": len(failures),
+        },
         "chapters": records,
         "skipped_chapters": failures,
     }

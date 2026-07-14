@@ -662,20 +662,12 @@
       <section class="sonovel-tool" aria-labelledby="sonovelTitle">
         <div class="sample-queue-head">
           <div>
-            <h3 id="sonovelTitle">SoNovel 搜索与下载</h3>
-            <p>仅用于你拥有合法访问权或已获授权的文本。下载完成后会保存到服务器 <code>ai/txt/download</code>，并提供当前设备下载。</p>
+            <h3 id="sonovelTitle">SoNovel 官方下载器</h3>
+            <p>使用服务器常驻的官方 SoNovel WebUI。下载完成后文件直接保存到服务器 <code>ai/txt/download</code>，官方页面可直接下载到当前设备。</p>
           </div>
-          <button id="sonovelRefreshBtn" type="button" class="secondary" title="读取当前下载状态">刷新</button>
+          <a class="secondary" href="/sonovel/" target="_blank" rel="noopener">打开官方页面</a>
         </div>
-        <div class="sonovel-controls">
-          <label class="sonovel-field"><span>书名或作者</span><input id="sonovelSearchInput" type="search" maxlength="120" placeholder="输入完整书名效果更好"></label>
-          <label class="sonovel-field"><span>下载格式</span><select id="sonovelFormat"><option value="txt" selected>TXT</option><option value="epub">EPUB</option><option value="html">HTML</option><option value="pdf">PDF</option></select></label>
-          <button id="sonovelSearchBtn" type="button">搜索</button>
-        </div>
-        <label class="sonovel-consent"><input id="sonovelConsent" type="checkbox">我确认本次下载文本具有合法访问或处理授权</label>
-        <div class="sonovel-results" id="sonovelResults"></div>
-        <div class="status" id="sonovelStatus"></div>
-        <div class="sonovel-downloads" id="sonovelDownloads"></div>
+        <p class="muted">仅处理你拥有合法访问或处理授权的文本。官方界面显示原生搜索结果、并发设置与实时下载进度；8090 不再插入二次下载任务、日志轮询或文件复制。</p>
       </section>
       <div class="grid-2">
         <div>
@@ -857,13 +849,22 @@
     }
     function renderSampleBook(book) {
       const state = sampleStateText(book);
+      const performance = book.performance && typeof book.performance === 'object' ? book.performance : {};
+      const timing = Number.isFinite(Number(performance.elapsed_seconds))
+        ? ` · 耗时：${Number(performance.elapsed_seconds).toFixed(2)} 秒`
+        : '';
+      const packetShape = performance.selected_chapter_count
+        ? ` · 章节包：${performance.selected_chapter_count}章${performance.chapter_concurrency ? `/${performance.chapter_concurrency}并发` : ''}`
+        : '';
+      const provider = book.provider ? `适配器：${book.provider}` : '';
       const detail = book.packet_path
-        ? `packet：${book.packet_path}${book.packet_generated_at ? ` · 生成：${book.packet_generated_at}` : ''}${book.packet_uploaded_at ? ` · Git：${book.packet_uploaded_at}` : ''}`
-        : (book.failure_reason || book.skip_reason || book.notes || '');
+        ? `packet：${book.packet_path}${book.packet_generated_at ? ` · 生成：${book.packet_generated_at}` : ''}${book.packet_uploaded_at ? ` · Git：${book.packet_uploaded_at}` : ''}${timing}${packetShape}`
+        : `${book.failure_reason || book.skip_reason || book.notes || ''}${timing}`;
       return `<div class="sample-book">
         <div class="sample-book-title">《${escapeHtml(book.title || '未命名作品')}》</div>
         <div class="sample-book-author">${escapeHtml(book.author || '作者未提供')}</div>
         <div class="sample-book-state"><span class="sample-badge ${sampleBookClass(book)}">${escapeHtml(state)}</span></div>
+        ${provider ? `<div class="sample-book-reason">${escapeHtml(provider)}</div>` : ''}
         ${detail ? `<div class="sample-book-reason">${escapeHtml(detail)}</div>` : ''}
       </div>`;
     }
@@ -960,13 +961,13 @@
       const phase = escapeHtml(progress.phase || '正在下载');
       const current = progress.current_chapter ? ` · 当前日志：${escapeHtml(progress.current_chapter)}` : '';
       const count = hasTotal
-        ? `已发起 ${Math.min(scheduled, total)}/${total} 章`
-        : (hasScheduled && scheduled ? `已发起 ${scheduled} 章` : '等待下载日志');
+        ? `已调度 ${Math.min(scheduled, total)}/${total} 章`
+        : (hasScheduled && scheduled ? `已调度 ${scheduled} 章` : '等待下载日志');
       const progressBar = hasTotal
         ? `<progress class="sonovel-progressbar" value="${Math.min(scheduled, total)}" max="${total}">${Math.round((Math.min(scheduled, total) / total) * 100)}%</progress>`
         : '';
       const logs = Array.isArray(progress.logs) ? progress.logs.filter(line => typeof line === 'string').slice(-18) : [];
-      const logPanel = `<details class="sonovel-live-log" open><summary>实时下载日志${logs.length ? `（最近 ${logs.length} 条）` : ''}</summary><pre class="sonovel-live-log-output">${escapeHtml(logs.join('\n') || '等待 SoNovel 输出…')}</pre></details>`;
+      const logPanel = `<details class="sonovel-live-log" open><summary>实时下载日志${logs.length ? `（最近 ${logs.length} 条，仅为显示窗口）` : ''}</summary><pre class="sonovel-live-log-output">${escapeHtml(logs.join('\n') || '等待 SoNovel 输出…')}</pre></details>`;
       return `<div class="sonovel-live-progress"><div class="sonovel-progress-head"><strong>${phase}</strong> · ${count}${current}</div>${progressBar}${logPanel}</div>`;
     }
     function renderSonovelDownloads(data) {
@@ -1775,16 +1776,6 @@
 
     portfolioRefreshBtn.addEventListener('click', loadPortfolio);
     novelSampleRefreshBtn.addEventListener('click', () => loadNovelSampleJobs({ manual: true }));
-    sonovelSearchBtn.addEventListener('click', searchSonovel);
-    sonovelSearchInput.addEventListener('keydown', event => {
-      if (event.key === 'Enter') searchSonovel();
-    });
-    sonovelConsent.addEventListener('change', renderSonovelResults);
-    sonovelResults.addEventListener('click', event => {
-      const button = event.target.closest('[data-sonovel-download]');
-      if (button && !button.disabled) startSonovelDownload(button.dataset.sonovelDownload);
-    });
-    sonovelRefreshBtn.addEventListener('click', () => loadSonovelStatus({ manual: true }).catch(() => {}));
     resetSleepTimer();
     refreshQr();
     clearUploadedScreenshotsOnPageLoad().catch(error => { status.textContent = `历史截图清理失败：${error.message}`; loadUploads().catch(() => {}); });
@@ -1792,8 +1783,6 @@
     loadScheduledTasks().catch(error => { financeTasks.innerHTML = `<div class="status">任务读取失败：${escapeHtml(error.message)}</div>`; });
     fmLoad('');
     loadNovelSampleJobs();
-    renderSonovelResults();
-    loadSonovelStatus().catch(() => {});
     novelSamplePoll = setInterval(() => {
       if (!document.hidden) loadNovelSampleJobs();
     }, 5000);

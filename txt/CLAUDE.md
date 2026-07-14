@@ -18,8 +18,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 2026-07-14 8090 SoNovel 下载
 
 - 8090 小说模块使用独立的 `freeok/so-novel` v1.11.0 运行目录 `/home/admin/ai/tools/so-novel/`；旧 `tools/sonovel-tool` 仅保留历史，禁止作为运行时修改或调用。
-- 网页下载必须双存：先受控生成，再归档到 `/home/admin/ai/txt/download/`，同时经 `/api/ai-download` 提供给打开网页的设备下载。服务按需启动、串行运行，Java 堆上限 256M；不得公开 7765 端口。
-- 运行配置使用 SoNovel 默认 `concurrency=50`，仍受单任务、384MB service 内存上限和书源规则限流约束。8090 活动下载应每秒显示受限的 SoNovel 实时日志快照；不要为省启动时间改成常驻服务。
+- 8090 小说模块的“打开官方页面”进入 `/sonovel/`，它是上游官方 WebUI 的同源受限代理；固定 API、SSE 和文件下载转发到仅回环监听的 `7765`。下载目录直接为 `/home/admin/ai/txt/download/`，官方页面负责当前设备下载；不得复活旧 Python/Node 包装、journal 推断进度或二次归档。
+- `sonovel.service` 常驻并开机启用，Java 堆上限256M、service上限384M；CLI worker 与官方页面共享全局锁，脚本只能确保服务就绪，命令结束不得停止服务。不得公开7765端口。
 - 仅处理公共领域、开放许可、官方允许下载或用户确认已获授权的材料；不得绕过付费、登录、DRM、验证码或反爬限制。
 
 ## Qimao Submission Rule Trigger
@@ -276,3 +276,5 @@ Do not commit `gen_avatar.py` unless it no longer contains secrets and you inten
 - 2026-07-13: Git 小说生产 worker 使用独立的`/home/admin/chatgpt-novel-production-system-runtime`工作树，不能直接使用用户可能修改且落后的普通 clone。样本、服务器代写、草稿上传前必须调用`novel-git-sync.py`；它只允许干净、未领先工作树做`fetch + ff-only`，禁止 reset、强推或覆盖本地工作。systemd 的 oneshot worker timer 必须使用`OnUnitInactiveSec`，否则可能只触发一次并显示`NextElapse=infinity`。
 - 2026-07-13: poller、样本、代写、上传必须通过`novel-git-worker-runner.py`共享非阻塞运行锁，避免并发 Git `index.lock`冲突；锁占用即跳过本轮、等下个 timer。服务设`PYTHONDONTWRITEBYTECODE=1`且网页仓库忽略`__pycache__/`，否则质量脚本缓存会把 runtime 误判为脏树。
 - 2026-07-13: 旧`novel-actions.service`（8091网页 Action 后端）已停止并禁用；新Git流程和8090页面不依赖它。仅保留历史文件，未经用户明确要求不得重新启用。
+- 2026-07-14: 2.2-LTS 启用 `SOURCE_CONTAMINATION_FIREWALL`。新书 CH001 前必须做公开撞题检索并建立来源基线；实际拆书来源和高风险撞题书分别以 `USED_CREATIVE_SOURCE`、`EXTERNAL_COLLISION_WATCHLIST` 登记，只吸收功能结论，不得把来源正文、专名、承重关系或连续事件链注入生成。每个 READY/草稿上传范围都须有 exact-current-blob 绑定的逐来源审计；专名复用、关系加开篇链复用、授权材料长句复用、撞题搜索或回执缺失/过期均硬阻断。旧书下一次写作、修订、READY 或上传前必须补真实审计；旧 `formal/CHxxx` 只读适配器仅能诊断，不能放行上传。该规则降低风险，不保证平台绝不误判。
+- 2026-07-14: Git 样本获取默认使用关键章节 Packet：前5/中2/后2，单书章节并发默认6（上限12）；需要多个有效样本时最多两本候选并行，达到目标即停止。结果必须记录适配器、耗时、章节包规模与并发，8090 Packet 面板展示这些指标。`novel-downloader` 仅为隔离基准候选，未经授权来源的身份/质量/恢复/速度对比不得进入生产路由；原始受版权正文不可提交 Git。
