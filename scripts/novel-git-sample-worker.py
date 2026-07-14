@@ -24,7 +24,7 @@ from typing import Any
 
 
 DEFAULT_REPO = Path("/home/admin/chatgpt-novel-production-system-runtime")
-SONOVEL_CLIENT = Path("/home/admin/ai/scripts/sonovel-client.js")
+SONOVEL_COMMAND = Path("/home/admin/ai/scripts/sonovel.sh")
 CODEX_BIN = Path("/root/.nvm/versions/node/v22.22.3/bin/codex")
 
 ALLOWED_BASES = {
@@ -126,7 +126,7 @@ def legal_basis_for(request: dict[str, Any], book: dict[str, Any]) -> tuple[str,
 def run_packet(book: dict[str, Any], timeout_seconds: int) -> tuple[bool, str]:
     title = str(book.get("title") or "")
     author = str(book.get("author") or "")
-    command = ["node", str(SONOVEL_CLIENT), "packet", title, author]
+    command = [str(SONOVEL_COMMAND), "packet", title, author]
     try:
         result = subprocess.run(
             command,
@@ -134,7 +134,9 @@ def run_packet(book: dict[str, Any], timeout_seconds: int) -> tuple[bool, str]:
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            timeout=timeout_seconds,
+            # Account for the bounded on-demand Java service startup before the
+            # per-book packet timeout starts doing useful work.
+            timeout=timeout_seconds + 40,
         )
     except subprocess.TimeoutExpired:
         return False, f"single book packet timed out after {timeout_seconds}s"

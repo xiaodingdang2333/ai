@@ -1,6 +1,9 @@
 # Local SoNovel Workflow
 
-This copy is used only as an on-demand downloader. The NovelCraft LLM plugin is not enabled.
+The active on-demand runtime is the isolated upstream release at
+`/home/admin/ai/tools/so-novel/`; this legacy checkout is retained only for
+history and must not be modified or used by the 8090 page. The NovelCraft LLM
+plugin is not enabled.
 
 ## Commands
 
@@ -13,7 +16,10 @@ This copy is used only as an on-demand downloader. The NovelCraft LLM plugin is 
 /home/admin/ai/scripts/sonovel.sh stop
 ```
 
-Downloaded files are stored in `downloads/`. Prepare a token-efficient study packet with:
+Direct CLI downloads first land in `/home/admin/ai/tools/so-novel/downloads/`.
+Downloads started from the 8090 page are additionally copied to
+`/home/admin/ai/txt/download/` and offered to the browser as an attachment.
+Prepare a token-efficient study packet with:
 
 ```bash
 /home/admin/ai/scripts/prepare-novel-study.py downloads/example.epub

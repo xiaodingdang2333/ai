@@ -1,5 +1,6 @@
 import cgi
 import csv
+import ipaddress
 import io
 import json
 import mimetypes
@@ -10,6 +11,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 import zipfile
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -47,6 +49,19 @@ FINANCE_QUOTE_CACHE_LOCK = threading.Lock()
 FINANCE_REFRESH_CODES = ("009052", "022430", "017091", "017093", "019118", "603000", "gold")
 NOVEL_GIT_REPO = Path("/home/admin/chatgpt-novel-production-system")
 NOVEL_DASHBOARD_RECENT_SAMPLE_LIMIT = 3
+SONOVEL_SCRIPT = AI_ROOT / "scripts" / "sonovel.sh"
+SONOVEL_DOWNLOAD_SOURCE = AI_ROOT / "tools" / "so-novel" / "downloads"
+SONOVEL_ARCHIVE_DIR = AI_ROOT / "txt" / "download"
+SONOVEL_WEB_STATE = ROOT / "sonovel-web-state.json"
+SONOVEL_SEARCH_CACHE_TTL_SECONDS = 10 * 60
+SONOVEL_SEARCH_CACHE_LIMIT = 12
+SONOVEL_RECENT_DOWNLOAD_LIMIT = 12
+SONOVEL_SEARCH_MIN_INTERVAL_SECONDS = 2
+SONOVEL_DOWNLOAD_MIN_INTERVAL_SECONDS = 10
+SONOVEL_WEB_STATE_LOCK = threading.RLock()
+SONOVEL_WEB_STATE_DATA = {"active": None, "recent": []}
+SONOVEL_SEARCH_CACHE = {}
+SONOVEL_REQUEST_TIMES = {}
 
 SCHEDULED_TASKS = [
     {
@@ -343,6 +358,295 @@ def write_json(handler, payload, status=HTTPStatus.OK):
     handler.send_header("Content-Length", str(len(data)))
     handler.end_headers()
     handler.wfile.write(data)
+
+
+def sonovel_now():
+    return time.strftime("%Y-%m-%dT%H:%M:%S%z")
+
+
+def load_sonovel_web_state():
+    try:
+        payload = json.loads(SONOVEL_WEB_STATE.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        payload = {}
+    active = payload.get("active") if isinstance(payload.get("active"), dict) else None
+    recent = payload.get("recent") if isinstance(payload.get("recent"), list) else []
+    recent = [item for item in recent if isinstance(item, dict)][:SONOVEL_RECENT_DOWNLOAD_LIMIT]
+    changed = False
+    if active and active.get("status") == "running":
+        active["status"] = "interrupted"
+        active["message"] = "8090 服务重启，未确认原下载是否完成。请重新搜索或检查服务器归档目录。"
+        active["finished_at"] = sonovel_now()
+        recent.insert(0, active)
+        active = None
+        changed = True
+    return {"active": active, "recent": recent[:SONOVEL_RECENT_DOWNLOAD_LIMIT], "changed": changed}
+
+
+def persist_sonovel_web_state():
+    payload = {
+        "active": SONOVEL_WEB_STATE_DATA.get("active"),
+        "recent": SONOVEL_WEB_STATE_DATA.get("recent", [])[:SONOVEL_RECENT_DOWNLOAD_LIMIT],
+        "updated_at": sonovel_now(),
+    }
+    SONOVEL_WEB_STATE.parent.mkdir(parents=True, exist_ok=True)
+    temporary = SONOVEL_WEB_STATE.with_suffix(".tmp")
+    temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary.replace(SONOVEL_WEB_STATE)
+
+
+SONOVEL_WEB_STATE_DATA = load_sonovel_web_state()
+if SONOVEL_WEB_STATE_DATA.pop("changed", False):
+    persist_sonovel_web_state()
+
+
+def sonovel_public_job(job):
+    if not isinstance(job, dict):
+        return None
+    fields = (
+        "job_id", "title", "author", "format", "status", "message", "started_at",
+        "finished_at", "archive_path", "archive_size", "download_url", "error",
+    )
+    return {field: job[field] for field in fields if field in job}
+
+
+def cleanup_sonovel_search_cache():
+    now = time.time()
+    stale = [key for key, value in SONOVEL_SEARCH_CACHE.items() if value.get("expires_at", 0) <= now]
+    for key in stale:
+        SONOVEL_SEARCH_CACHE.pop(key, None)
+    while len(SONOVEL_SEARCH_CACHE) > SONOVEL_SEARCH_CACHE_LIMIT:
+        oldest = min(SONOVEL_SEARCH_CACHE, key=lambda key: SONOVEL_SEARCH_CACHE[key].get("created_at", 0))
+        SONOVEL_SEARCH_CACHE.pop(oldest, None)
+
+
+def guard_sonovel_rate(remote_ip, action, minimum_interval):
+    key = (str(remote_ip or "unknown"), action)
+    now = time.monotonic()
+    previous = SONOVEL_REQUEST_TIMES.get(key, 0.0)
+    remaining = minimum_interval - (now - previous)
+    if remaining > 0:
+        raise ValueError(f"操作过于频繁，请 {remaining:.0f} 秒后再试")
+    SONOVEL_REQUEST_TIMES[key] = now
+
+
+def run_sonovel_command(arguments, timeout_seconds):
+    result = subprocess.run(
+        [str(SONOVEL_SCRIPT), *arguments],
+        cwd=str(AI_ROOT),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=timeout_seconds,
+    )
+    if result.returncode:
+        detail = (result.stderr or result.stdout or "SoNovel command failed").strip()
+        raise RuntimeError(detail[-1200:])
+    return (result.stdout or "").strip()
+
+
+def is_public_sonovel_url(value):
+    parsed = parse.urlparse(str(value or ""))
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return False
+    host = (parsed.hostname or "").strip().lower()
+    if not host or host == "localhost" or host.endswith(".localhost"):
+        return False
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return True
+    return not (
+        address.is_private
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_reserved
+        or address.is_unspecified
+    )
+
+
+def sonovel_search(query, remote_ip):
+    query = str(query or "").strip()
+    if not query:
+        raise ValueError("请输入书名或作者")
+    if len(query) > 120:
+        raise ValueError("搜索内容不能超过 120 个字符")
+    with SONOVEL_WEB_STATE_LOCK:
+        guard_sonovel_rate(remote_ip, "search", SONOVEL_SEARCH_MIN_INTERVAL_SECONDS)
+
+    raw = run_sonovel_command(["search", query], timeout_seconds=55)
+    try:
+        items = json.loads(raw)
+    except ValueError as exc:
+        raise RuntimeError("SoNovel 搜索结果格式异常") from exc
+    if not isinstance(items, list):
+        raise RuntimeError("SoNovel 未返回可用搜索结果")
+
+    selected = []
+    public = []
+    for item in items[:50]:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("bookName") or "").strip()
+        author = str(item.get("author") or "").strip()
+        url = str(item.get("url") or "").strip()
+        source_id = item.get("sourceId")
+        if not title or source_id is None or not is_public_sonovel_url(url):
+            continue
+        selected.append({
+            "bookName": title[:180],
+            "author": author[:120],
+            "sourceId": str(source_id),
+            "url": url,
+            "latestChapter": str(item.get("latestChapter") or "")[:180],
+        })
+        public.append({
+            "result_index": len(selected) - 1,
+            "title": title[:180],
+            "author": author[:120],
+            "source_id": str(source_id),
+            "latest_chapter": str(item.get("latestChapter") or "")[:180],
+        })
+
+    search_id = uuid.uuid4().hex
+    with SONOVEL_WEB_STATE_LOCK:
+        cleanup_sonovel_search_cache()
+        SONOVEL_SEARCH_CACHE[search_id] = {
+            "created_at": time.time(),
+            "expires_at": time.time() + SONOVEL_SEARCH_CACHE_TTL_SECONDS,
+            "results": selected,
+        }
+    return {"search_id": search_id, "query": query, "results": public}
+
+
+def archive_sonovel_download(source):
+    source_root = SONOVEL_DOWNLOAD_SOURCE.resolve()
+    source = source.resolve()
+    if source.parent != source_root or not source.is_file():
+        raise RuntimeError("SoNovel 返回的文件不在受控下载目录中")
+    SONOVEL_ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+    filename = safe_name(source.name)
+    target = SONOVEL_ARCHIVE_DIR / filename
+    if target.exists():
+        stem, suffix = target.stem, target.suffix
+        stamp = time.strftime("%Y%m%d_%H%M%S")
+        target = SONOVEL_ARCHIVE_DIR / f"{stem}_{stamp}{suffix}"
+        serial = 2
+        while target.exists():
+            target = SONOVEL_ARCHIVE_DIR / f"{stem}_{stamp}_{serial}{suffix}"
+            serial += 1
+    shutil.copy2(source, target)
+    return target
+
+
+def complete_sonovel_job(job_id, status, **updates):
+    with SONOVEL_WEB_STATE_LOCK:
+        active = SONOVEL_WEB_STATE_DATA.get("active")
+        if not isinstance(active, dict) or active.get("job_id") != job_id:
+            return
+        completed = dict(active)
+        completed.update(updates)
+        completed["status"] = status
+        completed["finished_at"] = sonovel_now()
+        SONOVEL_WEB_STATE_DATA["active"] = None
+        SONOVEL_WEB_STATE_DATA["recent"] = [completed] + SONOVEL_WEB_STATE_DATA.get("recent", [])
+        SONOVEL_WEB_STATE_DATA["recent"] = SONOVEL_WEB_STATE_DATA["recent"][:SONOVEL_RECENT_DOWNLOAD_LIMIT]
+        persist_sonovel_web_state()
+
+
+def run_sonovel_download_job(job_id, selected, output_format):
+    try:
+        raw = run_sonovel_command(
+            [
+                "download-url",
+                selected["bookName"],
+                selected.get("author", ""),
+                selected["sourceId"],
+                selected["url"],
+                output_format,
+            ],
+            timeout_seconds=12 * 60,
+        )
+        payload = json.loads(raw)
+        file_info = payload.get("file") if isinstance(payload, dict) else None
+        filename = str(file_info.get("name") or "") if isinstance(file_info, dict) else ""
+        if not filename or Path(filename).name != filename:
+            raise RuntimeError("SoNovel 未返回有效下载文件名")
+        archive = archive_sonovel_download(SONOVEL_DOWNLOAD_SOURCE / filename)
+        relative_archive = ai_relative(archive)
+        complete_sonovel_job(
+            job_id,
+            "completed",
+            message="已保存到服务器归档，并可下载到当前设备。",
+            archive_path=relative_archive,
+            archive_size=archive.stat().st_size,
+            download_url="/api/ai-download?" + parse.urlencode({"path": relative_archive}),
+        )
+    except subprocess.TimeoutExpired:
+        complete_sonovel_job(job_id, "failed", error="下载超过 12 分钟，已停止本次任务。")
+    except Exception as exc:
+        complete_sonovel_job(job_id, "failed", error=str(exc)[-1200:])
+
+
+def start_sonovel_download(search_id, result_index, output_format, remote_ip):
+    output_format = str(output_format or "txt").strip().lower()
+    if output_format not in {"txt", "epub", "html", "pdf"}:
+        raise ValueError("仅支持 TXT、EPUB、HTML 或 PDF")
+    try:
+        result_index = int(result_index)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("下载结果编号无效，请重新搜索") from exc
+
+    with SONOVEL_WEB_STATE_LOCK:
+        guard_sonovel_rate(remote_ip, "download", SONOVEL_DOWNLOAD_MIN_INTERVAL_SECONDS)
+        cleanup_sonovel_search_cache()
+        search = SONOVEL_SEARCH_CACHE.get(str(search_id or ""))
+        if not search:
+            raise ValueError("搜索结果已过期，请重新搜索后再下载")
+        results = search.get("results") if isinstance(search.get("results"), list) else []
+        if result_index < 0 or result_index >= len(results):
+            raise ValueError("下载结果不存在，请重新搜索")
+        active = SONOVEL_WEB_STATE_DATA.get("active")
+        if isinstance(active, dict) and active.get("status") == "running":
+            raise RuntimeError(f"已有下载任务正在运行：{active.get('title') or '未命名作品'}")
+        selected = dict(results[result_index])
+        job = {
+            "job_id": uuid.uuid4().hex,
+            "title": selected["bookName"],
+            "author": selected.get("author", ""),
+            "format": output_format,
+            "status": "running",
+            "message": "正在启动 SoNovel 并下载，完成后会同时归档到服务器和下载到当前设备。",
+            "started_at": sonovel_now(),
+        }
+        SONOVEL_WEB_STATE_DATA["active"] = job
+        persist_sonovel_web_state()
+
+    thread = threading.Thread(
+        target=run_sonovel_download_job,
+        args=(job["job_id"], selected, output_format),
+        daemon=True,
+        name=f"sonovel-download-{job['job_id'][:8]}",
+    )
+    thread.start()
+    return sonovel_public_job(job)
+
+
+def sonovel_web_status():
+    with SONOVEL_WEB_STATE_LOCK:
+        archive_count = 0
+        if SONOVEL_ARCHIVE_DIR.exists():
+            archive_count = sum(
+                1 for item in SONOVEL_ARCHIVE_DIR.iterdir()
+                if item.is_file() and not item.name.startswith(".")
+            )
+        return {
+            "active": sonovel_public_job(SONOVEL_WEB_STATE_DATA.get("active")),
+            "recent": [sonovel_public_job(item) for item in SONOVEL_WEB_STATE_DATA.get("recent", [])],
+            "archive_path": ai_relative(SONOVEL_ARCHIVE_DIR),
+            "archive_count": archive_count,
+            "updated_at": sonovel_now(),
+        }
 
 
 def query_params(path):
@@ -2090,6 +2394,19 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception as exc:
                 write_json(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
             return
+        if path == "/api/sonovel/search":
+            try:
+                params = query_params(self.path)
+                write_json(self, {"ok": True, **sonovel_search(params.get("q", ""), self.client_address[0])})
+            except Exception as exc:
+                write_json(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+        if path == "/api/sonovel/status":
+            try:
+                write_json(self, {"ok": True, **sonovel_web_status()})
+            except Exception as exc:
+                write_json(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
         if path == "/api/ai-files":
             try:
                 params = query_params(self.path)
@@ -2216,6 +2533,23 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         path = self.path.split("?", 1)[0]
+        if path == "/api/sonovel/download":
+            try:
+                body = read_json_body(self)
+                if body.get("authorized") is not True:
+                    raise ValueError("请先确认你对该文本具有合法访问或处理授权")
+                job = start_sonovel_download(
+                    body.get("search_id"),
+                    body.get("result_index"),
+                    body.get("format"),
+                    self.client_address[0],
+                )
+                write_json(self, {"ok": True, "job": job}, HTTPStatus.ACCEPTED)
+            except RuntimeError as exc:
+                write_json(self, {"ok": False, "error": str(exc)}, HTTPStatus.CONFLICT)
+            except Exception as exc:
+                write_json(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
         if path == "/api/renminwang/action":
             try:
                 body = read_json_body(self)

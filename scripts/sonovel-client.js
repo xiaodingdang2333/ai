@@ -4,6 +4,7 @@ const { spawnSync } = require('node:child_process');
 
 const BASE = process.env.SONOVEL_URL || 'http://127.0.0.1:7765';
 const USER_AGENT = 'Mozilla/5.0 (compatible; novel-market-study/1.0)';
+const DOWNLOAD_FORMATS = new Set(['epub', 'txt', 'html', 'pdf']);
 
 function normalizeTitle(value) {
   return String(value || '').normalize('NFKC').toLowerCase().replace(/[\p{P}\p{S}\s]+/gu, '');
@@ -72,6 +73,12 @@ async function getJson(path) {
   return response.json();
 }
 
+function localBooks(payload) {
+  return (payload.data || []).filter((item) => item
+    && typeof item.name === 'string'
+    && !item.name.startsWith('.'));
+}
+
 async function search(keyword) {
   const payload = await getJson(`/search/aggregated?kw=${encodeURIComponent(keyword)}`);
   return Array.isArray(payload.data) ? payload.data : [];
@@ -89,19 +96,29 @@ function printResults(items) {
   process.stdout.write(`${JSON.stringify(rows, null, 2)}\n`);
 }
 
-async function download(title, author = '') {
-  const items = await search(title);
-  const exact = items.filter((item) => item.bookName === title);
-  const candidates = exact.length ? exact : items;
-  const selected = candidates.find((item) => !author || item.author === author);
-  if (!selected) {
-    printResults(items);
-    throw new Error(`No downloadable result for: ${title}${author ? ` / ${author}` : ''}`);
+function normalizeFormat(value) {
+  const format = String(value || '').trim().toLowerCase();
+  if (format && !DOWNLOAD_FORMATS.has(format)) {
+    throw new Error(`Unsupported format: ${format}`);
   }
+  return format;
+}
 
+async function downloadSelected(selected, format = '') {
+  if (!selected || !selected.bookName || !selected.url || selected.sourceId === undefined || selected.sourceId === null) {
+    throw new Error('Selected result is incomplete');
+  }
+  const outputFormat = normalizeFormat(format);
   const before = await getJson('/local-books');
-  const beforeNames = new Set((before.data || []).map((item) => item.name));
-  const query = new URLSearchParams(selected).toString();
+  const beforeFiles = new Map(localBooks(before).map((item) => [item.name, item]));
+  const query = new URLSearchParams({
+    bookName: selected.bookName,
+    author: selected.author || '',
+    sourceId: String(selected.sourceId),
+    latestChapter: selected.latestChapter || '',
+    url: selected.url,
+  });
+  if (outputFormat) query.set('format', outputFormat);
   const response = await fetch(`${BASE}/book-fetch?${query}`);
   // Some builds return HTTP 500 after a non-fatal cover lookup error while the
   // background chapter download continues. The completed local file is the
@@ -114,13 +131,31 @@ async function download(title, author = '') {
   let created = null;
   for (let attempt = 0; attempt < 300; attempt += 1) {
     const after = await getJson('/local-books');
-    const files = (after.data || []).sort((a, b) => b.timestamp - a.timestamp);
-    created = files.find((item) => !beforeNames.has(item.name)) || null;
+    const files = localBooks(after).sort((a, b) => b.timestamp - a.timestamp);
+    created = files.find((item) => !beforeFiles.has(item.name))
+      || files.find((item) => {
+        const prior = beforeFiles.get(item.name);
+        return prior && (item.timestamp > prior.timestamp || item.size !== prior.size);
+      })
+      || null;
     if (created) break;
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
   if (!created) throw new Error('download did not produce a local file within 10 minutes');
-  process.stdout.write(`${JSON.stringify({ selected, file: created || null }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ selected, file: created || null, format: outputFormat || 'epub' }, null, 2)}\n`);
+}
+
+async function download(title, author = '', format = '') {
+  const items = await search(title);
+  const exact = items.filter((item) => item.bookName === title);
+  const candidates = exact.length ? exact : items;
+  const selected = candidates.find((item) => !author || item.author === author);
+  if (!selected) {
+    printResults(items);
+    throw new Error(`No downloadable result for: ${title}${author ? ` / ${author}` : ''}`);
+  }
+
+  await downloadSelected(selected, format);
 }
 
 async function packet(title, author = '') {
@@ -151,7 +186,17 @@ async function main() {
     return;
   }
   if (command === 'download' && args[0]) {
-    await download(args[0], args[1] || '');
+    await download(args[0], args[1] || '', args[2] || '');
+    return;
+  }
+  if (command === 'download-url' && args[0] && args[3]) {
+    await downloadSelected({
+      bookName: args[0],
+      author: args[1] || '',
+      sourceId: args[2],
+      url: args[3],
+      latestChapter: '',
+    }, args[4] || '');
     return;
   }
   if (command === 'packet' && args[0]) {
@@ -160,10 +205,10 @@ async function main() {
   }
   if (command === 'list') {
     const payload = await getJson('/local-books');
-    process.stdout.write(`${JSON.stringify(payload.data || [], null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify(localBooks(payload), null, 2)}\n`);
     return;
   }
-  throw new Error('Usage: sonovel-client.js search <keyword> | packet <exact-title> [official-author] | download <exact-title> [author] | list');
+  throw new Error('Usage: sonovel-client.js search <keyword> | packet <exact-title> [official-author] | download <exact-title> [author] [format] | download-url <title> <author> <source-id> <url> [format] | list');
 }
 
 main().catch((error) => {

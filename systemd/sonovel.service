@@ -1,0 +1,26 @@
+[Unit]
+Description=On-demand SoNovel downloader
+Requires=sonovel-firewall.service
+After=network-online.target sonovel-firewall.service
+
+[Service]
+Type=simple
+User=admin
+Group=admin
+WorkingDirectory=/home/admin/ai/tools/so-novel
+Environment=MODE=web
+Environment=CONFIG_FILE=/home/admin/ai/tools/so-novel/config.ini
+ExecStart=/usr/bin/java -Xms32m -Xmx256m -XX:+UseSerialGC -Djdk.virtualThreadScheduler.parallelism=4 -Djdk.virtualThreadScheduler.maxPoolSize=8 -Dconfig.file=/home/admin/ai/tools/so-novel/config.ini -Dmode=web -jar /home/admin/ai/tools/so-novel/app.jar
+Restart=no
+SuccessExitStatus=143 SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/admin/ai/tools/so-novel/downloads /home/admin/ai/tools/so-novel/logs /home/admin/ai/output/sonovel
+MemoryMax=384M
+TasksMax=128
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

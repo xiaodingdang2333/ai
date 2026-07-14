@@ -29,6 +29,14 @@ node_modules/
 # generated output
 output/
 
+# The 8090 toolbox keeps its static UI source under output/. Retain only this
+# source file; all other QR-login runtime files stay ignored.
+!/output/
+output/*
+!/output/qr-login/
+output/qr-login/*
+!/output/qr-login/index.html
+
 # temp/cache/log
 .cache/
 tmp/
@@ -66,6 +74,11 @@ package-lock.json
 
 # embedded upstream repository; portable copy is managed under codex/portable
 /tools/sonovel-tool/
+/tools/so-novel/
+
+# 8090 SoNovel runtime downloads; retain only the directory marker.
+/txt/download/*
+!/txt/download/.gitkeep
 
 # Codex portable snapshot scratch files and local recovery key
 /codex/portable/*.tmp

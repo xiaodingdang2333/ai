@@ -48,3 +48,4 @@
 - 2026-07-13: systemd 的`Type=oneshot` Git worker 若使用`OnUnitActiveSec`，本机实测只会触发一次，`NextElapse`变为`infinity`。轮询、样本、代写、上传 timer 必须使用`OnUnitInactiveSec`，以 worker 完成时刻重新计时；修改后检查`systemctl list-timers`确实显示下一次触发时间。
 - 2026-07-13: poller、样本、代写和上传若同时访问同一 Git worktree，会抢占`index.lock`并让安全同步误报失败。四类 service 必须经`novel-git-worker-runner.py`持有同一把非阻塞`flock`，锁占用时返回`locked`并由下个 timer 周期重试。Python 质量脚本生成的`__pycache__`也会使安全同步误判脏树，因此服务设`PYTHONDONTWRITEBYTECODE=1`，网页仓库同时忽略该缓存。
 - 2026-07-13: 已废弃的`novel-actions.service`（8091旧网页 Action 后端）已停止并禁用；新 Git worker 和8090页面不依赖它。保留文件与历史状态即可，未经用户明确要求不得重新启用，避免旧RPC流程被误调用并占用低配服务器资源。
+- 2026-07-14: 8090 小说模块的交互式 SoNovel 下载使用独立的 `freeok/so-novel` v1.11.0 运行目录 `/home/admin/ai/tools/so-novel/`，不得改动旧 `tools/sonovel-tool`。服务仅按需启动、以锁串行搜索/下载/packet，Java 堆限制 256M。网页下载必须先保存到受控目录，再复制到 `/home/admin/ai/txt/download/`，最后通过 `/api/ai-download` 触发当前设备下载；仅在用户确认具有合法访问或处理授权时处理，不能绕过付费、登录、DRM、验证码或反爬限制。

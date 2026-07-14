@@ -1,0 +1,1743 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>小叮当的 AI 控制台</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f1115;
+      --panel: #171a21;
+      --panel-2: #11141a;
+      --line: #2a303a;
+      --text: #f4f6f8;
+      --muted: #9aa4b2;
+      --soft: #cbd3dc;
+      --accent: #ff6b35;
+      --accent-2: #4f8cff;
+      --good: #44c27a;
+      --bad: #ff6575;
+      --warn: #f3b84b;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    body { padding: 18px; }
+    main {
+      width: min(100%, 1680px);
+      margin: 0 auto;
+      display: grid;
+      gap: 18px;
+    }
+    .page-head { order: 0; }
+    #uploadPanel { order: 1; }
+    #novelPanel { order: 2; }
+    #financePanel { order: 3; }
+    #toolsPanel { order: 4; }
+    h1, h2, h3 { margin: 0; letter-spacing: 0; }
+    h1 { font-size: 24px; font-weight: 700; }
+    h2 { font-size: 18px; font-weight: 680; }
+    h3 { font-size: 15px; font-weight: 660; }
+    p { margin: 0; color: var(--muted); line-height: 1.55; font-size: 14px; }
+    a { color: var(--text); }
+    button {
+      border: 0;
+      border-radius: 6px;
+      padding: 9px 13px;
+      background: var(--accent);
+      color: #fff;
+      font: inherit;
+      cursor: pointer;
+    }
+    button.secondary { background: #303844; }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    button.loading {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    button.loading::before {
+      content: "";
+      width: 13px;
+      height: 13px;
+      border: 2px solid rgba(255, 255, 255, .45);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    input, select {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #0d1015;
+      color: var(--text);
+      padding: 8px 9px;
+      font: inherit;
+    }
+    .page-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+    }
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 16px;
+      min-width: 0;
+    }
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .muted { color: var(--muted); font-size: 13px; }
+    .status { min-height: 20px; margin-top: 8px; color: var(--muted); font-size: 13px; }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(360px, .8fr);
+      gap: 18px;
+      align-items: start;
+    }
+    .finance-grid { grid-template-columns: minmax(420px, .85fr) minmax(700px, 1.15fr); }
+    .grid-wide {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      gap: 14px;
+    }
+
+    /* Novel sample queue */
+    .sample-queue {
+      margin-bottom: 18px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-2);
+    }
+    .sample-queue-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .sample-queue-head p { font-size: 13px; }
+    .sample-summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .sample-summary span, .sample-badge {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #202631;
+      color: var(--soft);
+      font-size: 12px;
+      line-height: 1.25;
+      padding: 4px 8px;
+      white-space: nowrap;
+    }
+    .sample-badge.good { color: var(--good); border-color: rgba(68, 194, 122, .45); }
+    .sample-badge.bad { color: var(--bad); border-color: rgba(255, 101, 117, .45); }
+    .sample-badge.warn { color: var(--warn); border-color: rgba(243, 184, 75, .45); }
+    .sample-job-list { display: grid; gap: 10px; }
+    .sample-job {
+      border: 1px solid #28303b;
+      border-radius: 7px;
+      padding: 11px;
+      background: #151a22;
+    }
+    .sample-job-main {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .sample-job-title { min-width: 0; }
+    .sample-job-title b { display: block; font-size: 14px; overflow-wrap: anywhere; }
+    .sample-job-meta { margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .sample-book-list {
+      margin: 10px 0 0;
+      border-top: 1px solid #27303a;
+      max-height: 300px;
+      overflow: auto;
+    }
+    .sample-book {
+      display: grid;
+      grid-template-columns: minmax(150px, 1fr) minmax(100px, .62fr) minmax(116px, .55fr);
+      gap: 9px;
+      align-items: start;
+      padding: 8px 0;
+      border-bottom: 1px solid #232a33;
+      font-size: 13px;
+    }
+    .sample-book-title { min-width: 0; color: var(--soft); overflow-wrap: anywhere; }
+    .sample-book-author { color: var(--muted); overflow-wrap: anywhere; }
+    .sample-book-state { min-width: 0; color: var(--muted); overflow-wrap: anywhere; }
+    .sample-book-reason { grid-column: 1 / -1; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+
+    /* SoNovel */
+    .sonovel-tool {
+      margin: 20px 0 18px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+    }
+    .sonovel-controls {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) minmax(120px, .28fr) auto;
+      gap: 10px;
+      align-items: end;
+      margin: 12px 0 9px;
+    }
+    .sonovel-field { display: grid; gap: 6px; color: var(--soft); font-size: 13px; }
+    .sonovel-consent {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .sonovel-consent input { min-width: auto; }
+    .sonovel-results, .sonovel-downloads { display: grid; gap: 8px; margin-top: 12px; }
+    .sonovel-results { max-height: 420px; overflow: auto; }
+    .sonovel-result, .sonovel-download {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 0;
+      border-top: 1px solid #27303a;
+    }
+    .sonovel-result:first-child, .sonovel-download:first-child { border-top: 0; }
+    .sonovel-result-title { color: var(--soft); font-size: 14px; overflow-wrap: anywhere; }
+    .sonovel-result-meta, .sonovel-download-meta { color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+    .sonovel-download-actions { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+    .sonovel-download-actions a { color: var(--accent-2); font-size: 13px; }
+    @media (max-width: 720px) {
+      .sonovel-controls { grid-template-columns: 1fr; }
+      .sonovel-result, .sonovel-download { grid-template-columns: 1fr; }
+    }
+
+    /* Upload */
+    .composer {
+      min-height: 92px;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 12px;
+      align-items: end;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-2);
+      padding: 12px;
+      outline: none;
+    }
+    .composer.dragover, .composer:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(255, 107, 53, .18);
+    }
+    .file-input { display: none; }
+    .round-btn {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      padding: 0;
+      font-size: 20px;
+    }
+    .queue {
+      min-height: 48px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-content: end;
+    }
+    .empty-hint { color: #6f7b8b; align-self: center; font-size: 14px; }
+    .file-chip {
+      position: relative;
+      width: 96px;
+      min-height: 88px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #10141b;
+      overflow: hidden;
+      color: var(--soft);
+    }
+    .file-chip img { width: 100%; height: 58px; object-fit: cover; display: block; }
+    .file-icon { height: 58px; display: grid; place-items: center; background: #202631; }
+    .file-name { padding: 5px 7px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .remove-file {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      padding: 0;
+      background: rgba(0, 0, 0, .7);
+      font-size: 13px;
+    }
+    .upload-list {
+      list-style: none;
+      margin: 12px 0 0;
+      padding: 0;
+      display: grid;
+      gap: 7px;
+    }
+    .upload-list li {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 0;
+      border-top: 1px solid #242b35;
+      color: var(--soft);
+      font-size: 13px;
+    }
+
+    /* Finance */
+    .metric-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-2);
+      padding: 12px;
+    }
+    .metric .label { color: var(--muted); font-size: 12px; }
+    .metric .value { margin-top: 5px; font-size: 22px; font-weight: 720; font-variant-numeric: tabular-nums; }
+    .portfolio-bars { display: grid; gap: 9px; }
+    .bar-row {
+      display: grid;
+      grid-template-columns: minmax(140px, 210px) minmax(0, 1fr) 92px 70px;
+      gap: 10px;
+      align-items: center;
+      font-size: 13px;
+    }
+    .bar-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--soft); }
+    .bar-track { height: 12px; border-radius: 999px; background: #252c36; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent-2), var(--accent)); }
+    .num { text-align: right; font-variant-numeric: tabular-nums; color: var(--soft); }
+    .pos { color: var(--good); }
+    .neg { color: var(--bad); }
+    .holdings-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .holdings-table th, .holdings-table td {
+      padding: 8px 7px;
+      border-bottom: 1px solid #242b35;
+      text-align: left;
+      vertical-align: middle;
+    }
+    .holdings-table th { color: var(--muted); font-weight: 620; }
+    .holdings-table td:nth-child(n+3), .holdings-table th:nth-child(n+3) { text-align: right; white-space: nowrap; }
+    .holdings-table .quote-action { width: 42px; text-align: center; }
+    .quote-refresh-btn {
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      display: inline-grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      background: #303844;
+      font-size: 18px;
+      line-height: 1;
+    }
+    .quote-refresh-btn.loading { display: inline-grid; }
+    .quote-refresh-btn.loading::before { width: 12px; height: 12px; }
+    .quote-refresh-btn.loading .quote-refresh-icon { display: none; }
+    .quote-state { margin-top: 2px; font-size: 11px; color: var(--muted); white-space: nowrap; }
+    .quote-state.error { color: var(--bad); }
+    .editable-cell { cursor: text; border-radius: 6px; }
+    .editable-cell:hover { background: #202631; outline: 1px solid #354154; }
+    .cell-editor {
+      width: 118px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      padding: 6px 7px;
+    }
+    .table-wrap { overflow: auto; }
+
+    /* Tasks */
+    .task-group {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 14px;
+    }
+    .task-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-2);
+      padding: 13px;
+      min-width: 0;
+    }
+    .task-head {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: start;
+    }
+    .task-title { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .badge {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: #2b3340;
+      color: #dce3eb;
+      font-size: 12px;
+    }
+    .switch-line {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--soft);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .switch-line input { width: 18px; height: 18px; accent-color: var(--accent); }
+    .task-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .task-field {
+      display: grid;
+      gap: 5px;
+      min-width: 0;
+    }
+    .task-field.full { grid-column: 1 / -1; }
+    .task-field span { color: var(--soft); font-size: 13px; word-break: break-word; }
+    .task-help { color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .task-technical { color: #697587; font-size: 11px; word-break: break-all; }
+    .task-unit { color: var(--muted); font-size: 12px; }
+    .task-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .task-status { min-height: 18px; color: var(--muted); font-size: 13px; margin-top: 7px; }
+
+    /* Novel */
+    .fm-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 12px;
+      align-items: center;
+    }
+    .fm-breadcrumb { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; color: var(--muted); font-size: 13px; }
+    .fm-breadcrumb a { color: #ffb08b; text-decoration: none; }
+    .fm-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .fm-table th, .fm-table td { padding: 8px; border-bottom: 1px solid #242b35; }
+    .fm-table th { text-align: left; color: var(--muted); }
+    .fm-table .size-cell, .fm-table .meta-cell { color: var(--muted); white-space: nowrap; text-align: right; }
+    .fm-link { color: var(--text); text-decoration: none; }
+    .fm-link:hover { color: #ffb08b; text-decoration: underline; }
+    .fm-name-cell { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .fm-name-cell .fm-link { min-width: 0; word-break: break-word; }
+    .fm-copy-btn {
+      flex: 0 0 auto;
+      padding: 4px 8px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: #252c36;
+      color: var(--soft);
+      font-size: 12px;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+    .fm-copy-btn:hover { border-color: var(--accent); color: #fff; }
+    .fm-copy-btn.copied { border-color: var(--good); background: #183527; color: #b8f5ce; }
+    .qr-box {
+      display: grid;
+      place-items: center;
+      background: #fff;
+      border-radius: 8px;
+      padding: 14px;
+    }
+    .qr-box img { width: 100%; max-width: 320px; display: block; }
+    .time { color: var(--muted); font-variant-numeric: tabular-nums; margin-top: 8px; }
+
+    /* Tools */
+    details.panel { padding: 0; overflow: hidden; }
+    details.panel > summary {
+      cursor: pointer;
+      padding: 16px;
+      font-size: 18px;
+      font-weight: 680;
+      list-style: none;
+    }
+    details.panel > summary::-webkit-details-marker { display: none; }
+    .tool-body { padding: 0 16px 16px; }
+    .video-stage {
+      display: grid;
+      place-items: center;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background-color: #242a33;
+      background-image:
+        linear-gradient(45deg, #303845 25%, transparent 25%),
+        linear-gradient(-45deg, #303845 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #303845 75%),
+        linear-gradient(-45deg, transparent 75%, #303845 75%);
+      background-size: 28px 28px;
+      background-position: 0 0, 0 14px, 14px -14px, -14px 0;
+    }
+    .video-stage video { width: 100%; max-width: 420px; aspect-ratio: 1; display: block; }
+    .control-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin: 14px 0;
+    }
+    label { display: grid; gap: 6px; color: var(--soft); font-size: 13px; }
+    .progress-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+      margin-top: 12px;
+    }
+    progress { width: 100%; height: 12px; accent-color: var(--accent); }
+    .video-links { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; font-size: 13px; }
+    .sleep-lock {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: none;
+      place-items: center;
+      padding: 24px;
+      background: rgba(8, 10, 14, .34);
+      backdrop-filter: blur(18px) saturate(.75);
+      -webkit-backdrop-filter: blur(18px) saturate(.75);
+    }
+    body.sleeping main { filter: blur(10px); pointer-events: none; user-select: none; }
+    body.sleeping .sleep-lock { display: grid; }
+    .sleep-panel {
+      width: min(360px, 100%);
+      border: 1px solid rgba(255, 255, 255, .16);
+      border-radius: 8px;
+      background: rgba(17, 20, 26, .88);
+      padding: 18px;
+      box-shadow: 0 18px 70px rgba(0, 0, 0, .42);
+    }
+    .sleep-panel h2 { margin-bottom: 8px; }
+    .sleep-panel input { width: 100%; margin-top: 14px; }
+    .sleep-actions { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
+    .sleep-actions button { flex: 0 0 auto; }
+    .sleep-error { color: var(--bad); min-height: 18px; font-size: 13px; }
+
+    @media (max-width: 980px) {
+      body { padding: 12px; }
+      .grid-2, .finance-grid { grid-template-columns: 1fr; }
+      .metric-row, .control-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .bar-row { grid-template-columns: minmax(120px, 1fr) 1fr 82px; }
+      .bar-row .num:last-child { display: none; }
+    }
+    @media (max-width: 640px) {
+      .page-head, .section-head { align-items: flex-start; flex-direction: column; }
+      .metric-row, .task-grid, .control-grid { grid-template-columns: 1fr; }
+      .composer { grid-template-columns: auto 1fr; }
+      .composer .round-btn:last-of-type { grid-column: 1 / -1; width: 100%; border-radius: 6px; }
+      .holdings-table { min-width: 900px; }
+      .fm-table .meta-cell { display: none; }
+      .sample-queue-head, .sample-job-main { align-items: flex-start; flex-direction: column; }
+      .sample-book { grid-template-columns: 1fr; gap: 4px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="page-head">
+      <div>
+        <h1>小叮当的 AI 控制台</h1>
+        <p>上传、金融持仓、定时任务、小说文件和工具都在这里。</p>
+      </div>
+      <button id="taskRefreshBtn" type="button" class="secondary" title="重新读取 cron 和 systemd 定时任务状态">刷新任务状态</button>
+    </header>
+
+    <section class="panel" id="uploadPanel">
+      <div class="section-head">
+        <h2>上传文件</h2>
+        <p>拖入文件或粘贴截图。</p>
+      </div>
+      <div class="composer" id="composer" tabindex="0">
+        <button class="round-btn" id="pickBtn" type="button" title="选择文件">+</button>
+        <div class="queue" id="queue"><span class="empty-hint">拖入文件或粘贴截图</span></div>
+        <button class="round-btn" id="uploadBtn" type="button" title="上传" disabled>↑</button>
+        <input class="file-input" id="files" name="files" type="file" multiple>
+      </div>
+      <div class="status" id="status"></div>
+      <ul class="upload-list" id="uploads"></ul>
+    </section>
+
+    <section class="panel" id="financePanel">
+      <div class="section-head">
+        <div>
+          <h2>金融模块</h2>
+          <p id="portfolioFreshness">刷新页面会重新拉取基金估值、股票报价和黄金行情。</p>
+        </div>
+        <button id="portfolioRefreshBtn" type="button" class="secondary">刷新持仓</button>
+      </div>
+      <div class="grid-2 finance-grid">
+        <div>
+          <div class="metric-row">
+            <div class="metric"><div class="label">总持仓估算</div><div class="value" id="portfolioTotal">--</div></div>
+            <div class="metric"><div class="label">已知浮盈亏</div><div class="value" id="portfolioProfit">--</div></div>
+            <div class="metric"><div class="label">资产类别</div><div class="value" id="portfolioCategories">--</div></div>
+          </div>
+          <div class="portfolio-bars" id="portfolioBars"></div>
+        </div>
+        <div class="table-wrap">
+          <table class="holdings-table">
+            <thead><tr><th>持仓</th><th>类别</th><th>单价/净值</th><th>数量</th><th>市值</th><th>总收益</th><th>昨日/最新</th><th class="quote-action">刷新</th></tr></thead>
+            <tbody id="holdingsBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="section-head" style="margin-top:18px">
+        <h2>金融监控</h2>
+        <p>每个监控横向铺开，基金相关任务会把每只基金参数拆开显示。</p>
+      </div>
+      <div class="task-group" id="financeTasks"></div>
+    </section>
+
+    <section class="panel" id="novelPanel">
+      <div class="section-head">
+        <div>
+          <h2>小说模块</h2>
+          <p>样本 packet 进度、文件管理、番茄草稿任务和扫码登录。</p>
+        </div>
+      </div>
+      <section class="sample-queue" aria-labelledby="sampleQueueTitle">
+        <div class="sample-queue-head">
+          <div>
+            <h3 id="sampleQueueTitle">拆书 Packet 进度</h3>
+            <p>网页提交候选书单后，服务器按顺序尝试；达到有效样本目标即停止。packet 上传 Git 后即可让网页 ChatGPT 继续深度拆书。</p>
+          </div>
+          <button id="novelSampleRefreshBtn" type="button" class="secondary" title="重新读取 Git 中的样本任务状态">刷新</button>
+        </div>
+        <div class="sample-summary" id="novelSampleSummary"><span>读取中...</span></div>
+        <div class="sample-job-list" id="novelSampleJobs"></div>
+        <div class="status" id="novelSampleStatus"></div>
+      </section>
+      <section class="sonovel-tool" aria-labelledby="sonovelTitle">
+        <div class="sample-queue-head">
+          <div>
+            <h3 id="sonovelTitle">SoNovel 搜索与下载</h3>
+            <p>仅用于你拥有合法访问权或已获授权的文本。下载完成后会保存到服务器 <code>ai/txt/download</code>，并提供当前设备下载。</p>
+          </div>
+          <button id="sonovelRefreshBtn" type="button" class="secondary" title="读取当前下载状态">刷新</button>
+        </div>
+        <div class="sonovel-controls">
+          <label class="sonovel-field"><span>书名或作者</span><input id="sonovelSearchInput" type="search" maxlength="120" placeholder="输入完整书名效果更好"></label>
+          <label class="sonovel-field"><span>下载格式</span><select id="sonovelFormat"><option value="txt" selected>TXT</option><option value="epub">EPUB</option><option value="html">HTML</option><option value="pdf">PDF</option></select></label>
+          <button id="sonovelSearchBtn" type="button">搜索</button>
+        </div>
+        <label class="sonovel-consent"><input id="sonovelConsent" type="checkbox">我确认本次下载文本具有合法访问或处理授权</label>
+        <div class="sonovel-results" id="sonovelResults"></div>
+        <div class="status" id="sonovelStatus"></div>
+        <div class="sonovel-downloads" id="sonovelDownloads"></div>
+      </section>
+      <div class="grid-2">
+        <div>
+          <div class="fm-toolbar">
+            <button id="fmUploadBtn" type="button">上传到当前目录</button>
+            <button id="fmDownloadBtn" type="button" class="secondary" disabled>下载选中</button>
+            <button id="fmSelectAllBtn" type="button" class="secondary">全选</button>
+            <input class="file-input" id="fmFileInput" type="file" multiple>
+          </div>
+          <div class="fm-breadcrumb" id="fmBreadcrumb"></div>
+          <div class="table-wrap">
+            <table class="fm-table">
+              <thead><tr><th style="width:34px"></th><th>名称</th><th>大小</th><th class="meta-cell">修改时间</th></tr></thead>
+              <tbody id="fmTbody"></tbody>
+            </table>
+          </div>
+          <div class="status" id="fmStatus"></div>
+        </div>
+        <div>
+          <div class="task-group" id="novelTasks"></div>
+          <div style="height:14px"></div>
+          <h3>番茄扫码登录</h3>
+          <div class="qr-box"><img id="qr" src="current.png" alt="登录二维码"></div>
+          <p>此二维码自动刷新。需要登录番茄后台时保持页面打开。</p>
+          <p class="time" id="time"></p>
+        </div>
+      </div>
+    </section>
+
+    <details class="panel" id="toolsPanel">
+      <summary>AI 小工具</summary>
+      <div class="tool-body">
+        <h2>瓜娃相关 - 透明圆钟视频</h2>
+        <div class="video-stage">
+          <video id="clockVideo" controls autoplay loop muted playsinline poster="videos/cartoon_clock_preview.png">
+            <source src="videos/cartoon_clock_6_to_7_transparent.webm" type="video/webm">
+          </video>
+        </div>
+        <p>卡通圆钟，6点走到7点，15秒，240倍速，无秒针，透明背景。</p>
+        <div class="control-grid">
+          <label>开始时间 <input id="clockStart" type="time" value="06:00"></label>
+          <label>结束时间 <input id="clockEnd" type="time" value="07:00"></label>
+          <label>速度倍数 <input id="clockSpeed" type="number" min="1" max="3600" step="1" value="240"></label>
+          <label>钟表样式 <select id="clockStyle"><option value="cartoon" selected>卡通</option><option value="classic">经典</option><option value="minimal">极简</option></select></label>
+        </div>
+        <button id="generateClockBtn" type="button">重新生成视频</button>
+        <div class="progress-row"><progress id="clockProgress" value="100" max="100"></progress><span class="muted" id="clockProgressText">就绪</span></div>
+        <div class="status" id="clockStatus"></div>
+        <div class="video-links">
+          <a id="webmLink" href="videos/cartoon_clock_6_to_7_transparent.webm" download>下载 WebM 透明预览版</a>
+          <a id="movLink" href="videos/cartoon_clock_6_to_7_transparent_compact_prores4444.mov" download>下载 ProRes 4444 透明母版</a>
+        </div>
+      </div>
+    </details>
+  </main>
+  <div class="sleep-lock" id="sleepLock" aria-hidden="true">
+    <div class="sleep-panel">
+      <h2>小叮当的 AI 空间已休眠</h2>
+      <p>输入密码唤醒页面。</p>
+      <input id="sleepPassword" type="password" autocomplete="current-password" placeholder="密码">
+      <div class="sleep-actions">
+        <button id="sleepUnlockBtn" type="button">唤醒</button>
+        <span class="sleep-error" id="sleepError"></span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const img = $('qr');
+    const time = $('time');
+    const composer = $('composer');
+    const pickBtn = $('pickBtn');
+    const queue = $('queue');
+    const files = $('files');
+    const uploadBtn = $('uploadBtn');
+    const status = $('status');
+    const uploads = $('uploads');
+    const financeTasks = $('financeTasks');
+    const novelTasks = $('novelTasks');
+    const novelSampleRefreshBtn = $('novelSampleRefreshBtn');
+    const novelSampleSummary = $('novelSampleSummary');
+    const novelSampleJobs = $('novelSampleJobs');
+    const novelSampleStatus = $('novelSampleStatus');
+    const sonovelSearchInput = $('sonovelSearchInput');
+    const sonovelFormat = $('sonovelFormat');
+    const sonovelSearchBtn = $('sonovelSearchBtn');
+    const sonovelRefreshBtn = $('sonovelRefreshBtn');
+    const sonovelConsent = $('sonovelConsent');
+    const sonovelResults = $('sonovelResults');
+    const sonovelStatus = $('sonovelStatus');
+    const sonovelDownloads = $('sonovelDownloads');
+    const taskRefreshBtn = $('taskRefreshBtn');
+    const portfolioRefreshBtn = $('portfolioRefreshBtn');
+    const portfolioFreshness = $('portfolioFreshness');
+    const portfolioTotal = $('portfolioTotal');
+    const portfolioProfit = $('portfolioProfit');
+    const portfolioCategories = $('portfolioCategories');
+    const portfolioBars = $('portfolioBars');
+    const holdingsBody = $('holdingsBody');
+    const fmBreadcrumb = $('fmBreadcrumb');
+    const fmTbody = $('fmTbody');
+    const fmStatus = $('fmStatus');
+    const fmUploadBtn = $('fmUploadBtn');
+    const fmDownloadBtn = $('fmDownloadBtn');
+    const fmSelectAllBtn = $('fmSelectAllBtn');
+    const fmFileInput = $('fmFileInput');
+    const clockVideo = $('clockVideo');
+    const clockStart = $('clockStart');
+    const clockEnd = $('clockEnd');
+    const clockSpeed = $('clockSpeed');
+    const clockStyle = $('clockStyle');
+    const generateClockBtn = $('generateClockBtn');
+    const clockProgress = $('clockProgress');
+    const clockProgressText = $('clockProgressText');
+    const clockStatus = $('clockStatus');
+    const webmLink = $('webmLink');
+    const movLink = $('movLink');
+    const sleepLock = $('sleepLock');
+    const sleepPassword = $('sleepPassword');
+    const sleepUnlockBtn = $('sleepUnlockBtn');
+    const sleepError = $('sleepError');
+    const pending = [];
+    let scheduledTasks = [];
+    let fmEntries = [];
+    let fmCurrentPath = '';
+    const fmSelected = new Set();
+    let clockPoll = null;
+    let currentPortfolio = null;
+    let activeCellInput = null;
+    const quoteStatus = new Map();
+    const quoteRequests = new Map();
+    let sleepTimer = null;
+    let novelSampleRefreshInFlight = false;
+    let novelSamplePoll = null;
+    let sonovelSearchId = '';
+    let sonovelSearchResults = [];
+    let sonovelActiveJobId = '';
+    let sonovelPoll = null;
+    const sonovelAutoDownloadedJobs = new Set();
+    const SLEEP_AFTER_MS = 5 * 60 * 1000;
+    const SLEEP_PASSWORD = 'xiaodingdang';
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    }
+    function sampleStatusClass(value) {
+      const status = String(value || '').toLowerCase();
+      if (['completed', 'packet_ready', 'effective', 'uploaded_to_drafts'].includes(status)) return 'good';
+      if (['failed', 'manual_material_required', 'quality_rejected'].includes(status)) return 'bad';
+      if (['pending', 'running', 'checking', 'partially_completed'].includes(status)) return 'warn';
+      return '';
+    }
+    function sampleStateText(book) {
+      const acquisition = book.acquisition_status || '';
+      const quality = book.quality_status || '';
+      if (acquisition === 'packet_ready') {
+        if (book.packet_git_push_status === 'pushed') return 'packet 已上传 Git';
+        if (book.packet_git_push_status === 'committed_local') return 'packet 已提交本地 Git';
+        if (book.packet_git_push_status === 'push_failed') return 'packet 推送 Git 失败';
+        if (book.packet_git_push_status === 'commit_failed') return 'packet Git 提交失败';
+        if (book.packet_git_push_status === 'not_requested') return 'packet 已生成，未请求上传';
+        return 'packet 已生成，正在回写 Git';
+      }
+      if (acquisition === 'not_attempted') return '备用，尚未尝试';
+      if (acquisition === 'running') return '正在下载与质检';
+      if (acquisition === 'manual_required') return '需要人工材料';
+      if (acquisition === 'failed') return quality === 'quality_rejected' ? '下载成功但质检不通过' : '下载失败';
+      if (acquisition === 'pending') return '等待服务器处理';
+      return acquisition || quality || '等待处理';
+    }
+    function sampleBookClass(book) {
+      if (book.acquisition_status === 'packet_ready') {
+        if (book.packet_git_push_status === 'pushed' || book.packet_git_push_status === 'committed_local') return 'good';
+        if (['push_failed', 'commit_failed', 'remote_changed_not_pushed'].includes(book.packet_git_push_status)) return 'bad';
+        return 'warn';
+      }
+      return sampleStatusClass(book.acquisition_status || book.quality_status);
+    }
+    function renderSampleBook(book) {
+      const state = sampleStateText(book);
+      const detail = book.packet_path
+        ? `packet：${book.packet_path}${book.packet_generated_at ? ` · 生成：${book.packet_generated_at}` : ''}${book.packet_uploaded_at ? ` · Git：${book.packet_uploaded_at}` : ''}`
+        : (book.failure_reason || book.skip_reason || book.notes || '');
+      return `<div class="sample-book">
+        <div class="sample-book-title">《${escapeHtml(book.title || '未命名作品')}》</div>
+        <div class="sample-book-author">${escapeHtml(book.author || '作者未提供')}</div>
+        <div class="sample-book-state"><span class="sample-badge ${sampleBookClass(book)}">${escapeHtml(state)}</span></div>
+        ${detail ? `<div class="sample-book-reason">${escapeHtml(detail)}</div>` : ''}
+      </div>`;
+    }
+    function renderNovelSampleJobs(data) {
+      const sampleJobs = (data.jobs || []).filter(job => job.type === 'sample');
+      const running = sampleJobs.filter(job => job.status === 'running').length;
+      const pending = sampleJobs.filter(job => job.status === 'pending').length;
+      const ready = sampleJobs.filter(job => Number(job.effective_sample_count || 0) >= Number(job.target_effective_sample_count || Infinity) && Number(job.target_effective_sample_count || 0) > 0).length;
+      novelSampleSummary.innerHTML = [
+        `<span>样本任务 ${sampleJobs.length}</span>`,
+        `<span class="${running ? 'sample-badge warn' : ''}">运行中 ${running}</span>`,
+        `<span class="${pending ? 'sample-badge warn' : ''}">待处理 ${pending}</span>`,
+        `<span class="${ready ? 'sample-badge good' : ''}">packet 已齐 ${ready}</span>`,
+        `<span>服务器扫描：每 5 分钟</span>`
+      ].join('');
+      if (!sampleJobs.length) {
+        novelSampleJobs.innerHTML = '<p class="muted">暂无网页提交的拆书样本任务。</p>';
+        return;
+      }
+      novelSampleJobs.innerHTML = sampleJobs.map(job => {
+        const target = Number(job.target_effective_sample_count || 0);
+        const effective = Number(job.effective_sample_count || 0);
+        const attempted = job.attempted_count === undefined || job.attempted_count === null ? '--' : job.attempted_count;
+        const candidates = job.total_candidate_count === undefined || job.total_candidate_count === null ? '--' : job.total_candidate_count;
+        const current = job.current_book && (job.current_book.title || job.current_book.author)
+          ? `当前：${job.current_book.title || ''}${job.current_book.author ? ` — ${job.current_book.author}` : ''}`
+          : '';
+        const books = Array.isArray(job.books) ? job.books.map(renderSampleBook).join('') : '';
+        return `<article class="sample-job">
+          <div class="sample-job-main">
+            <div class="sample-job-title">
+              <b>${escapeHtml(job.request_id)}</b>
+              <div class="sample-job-meta">${escapeHtml(job.genre || '未标注题材')} · ${escapeHtml(job.target_platform || '未标注平台')}</div>
+            </div>
+            <span class="sample-badge ${sampleStatusClass(job.status)}">${escapeHtml(job.status || 'unknown')}</span>
+          </div>
+          <div class="sample-job-meta">有效 packet：${effective}/${target || '--'} · 已尝试：${attempted}/${candidates} · 更新时间：${escapeHtml(job.updated_at || '--')}</div>
+          ${current ? `<div class="sample-job-meta">${escapeHtml(current)}</div>` : ''}
+          ${job.progress_message ? `<div class="sample-job-meta">${escapeHtml(job.progress_message)}</div>` : ''}
+          ${books ? `<div class="sample-book-list">${books}</div>` : ''}
+        </article>`;
+      }).join('');
+    }
+    async function loadNovelSampleJobs({ manual = false } = {}) {
+      if (novelSampleRefreshInFlight) return;
+      novelSampleRefreshInFlight = true;
+      if (manual) setButtonLoading(novelSampleRefreshBtn, true, '刷新中');
+      try {
+        const res = await fetch(`api/novel-git-jobs?t=${Date.now()}`, { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        renderNovelSampleJobs(data);
+        novelSampleStatus.textContent = `已读取 Git 状态：${data.updated_at}`;
+      } catch (error) {
+        novelSampleStatus.textContent = `拆书进度读取失败：${error.message}`;
+      } finally {
+        novelSampleRefreshInFlight = false;
+        if (manual) setButtonLoading(novelSampleRefreshBtn, false);
+      }
+    }
+    function sonovelSizeText(bytes) {
+      const value = Number(bytes || 0);
+      if (!value) return '--';
+      if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
+      if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
+      return `${value} B`;
+    }
+    function sonovelStateClass(status) {
+      if (status === 'completed') return 'good';
+      if (status === 'failed' || status === 'interrupted') return 'bad';
+      if (status === 'running') return 'warn';
+      return '';
+    }
+    function renderSonovelResults() {
+      if (!sonovelSearchResults.length) {
+        sonovelResults.innerHTML = '<p class="muted">搜索结果会显示在这里。</p>';
+        return;
+      }
+      const canDownload = sonovelConsent.checked;
+      sonovelResults.innerHTML = sonovelSearchResults.map(result => `<article class="sonovel-result">
+        <div>
+          <div class="sonovel-result-title">《${escapeHtml(result.title || '未命名作品')}》${result.author ? ` — ${escapeHtml(result.author)}` : ''}</div>
+          <div class="sonovel-result-meta">来源 ${escapeHtml(result.source_id || '--')}${result.latest_chapter ? ` · 最新章节：${escapeHtml(result.latest_chapter)}` : ''}</div>
+        </div>
+        <button type="button" class="secondary" data-sonovel-download="${Number(result.result_index)}" ${canDownload ? '' : 'disabled'}>下载并双存</button>
+      </article>`).join('');
+    }
+    function renderSonovelDownloads(data) {
+      const active = data.active;
+      const jobs = [];
+      if (active) jobs.push(active);
+      for (const item of (data.recent || [])) {
+        if (!jobs.some(job => job.job_id === item.job_id)) jobs.push(item);
+      }
+      if (!jobs.length) {
+        sonovelDownloads.innerHTML = '';
+        return;
+      }
+      sonovelDownloads.innerHTML = jobs.slice(0, 8).map(job => `<article class="sonovel-download">
+        <div>
+          <div class="sonovel-result-title">《${escapeHtml(job.title || '未命名作品')}》${job.author ? ` — ${escapeHtml(job.author)}` : ''}</div>
+          <div class="sonovel-download-meta"><span class="sample-badge ${sonovelStateClass(job.status)}">${escapeHtml(job.status || 'unknown')}</span> · ${escapeHtml((job.format || '').toUpperCase() || '--')} · ${escapeHtml(job.message || job.error || '')}</div>
+          <div class="sonovel-download-meta">${job.archive_path ? `服务器：${escapeHtml(job.archive_path)} · ${sonovelSizeText(job.archive_size)}` : ''}${job.finished_at ? ` · ${escapeHtml(job.finished_at)}` : ''}</div>
+        </div>
+        <div class="sonovel-download-actions">${job.download_url ? `<a href="${escapeHtml(job.download_url)}" download>下载到本机</a>` : ''}</div>
+      </article>`).join('');
+    }
+    function triggerSonovelBrowserDownload(job) {
+      if (!job || !job.job_id || !job.download_url || sonovelAutoDownloadedJobs.has(job.job_id)) return;
+      sonovelAutoDownloadedJobs.add(job.job_id);
+      const link = document.createElement('a');
+      link.href = job.download_url;
+      link.download = '';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
+    function stopSonovelPolling() {
+      if (sonovelPoll) {
+        clearInterval(sonovelPoll);
+        sonovelPoll = null;
+      }
+    }
+    function startSonovelPolling() {
+      if (sonovelPoll) return;
+      sonovelPoll = setInterval(() => {
+        if (!document.hidden) loadSonovelStatus().catch(() => {});
+      }, 3000);
+    }
+    async function loadSonovelStatus({ manual = false } = {}) {
+      if (manual) setButtonLoading(sonovelRefreshBtn, true, '读取中');
+      try {
+        const res = await fetch(`api/sonovel/status?t=${Date.now()}`, { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        renderSonovelDownloads(data);
+        if (data.active) {
+          sonovelStatus.textContent = data.active.message || '正在下载...';
+          startSonovelPolling();
+        } else {
+          const finished = (data.recent || []).find(job => job.job_id === sonovelActiveJobId);
+          if (finished && finished.status === 'completed') {
+            triggerSonovelBrowserDownload(finished);
+            sonovelStatus.textContent = '下载完成：已归档到服务器，并已尝试开始本机下载。若浏览器拦截，请点击下方“下载到本机”。';
+          } else if (finished && finished.status === 'failed') {
+            sonovelStatus.textContent = `下载失败：${finished.error || '请更换结果后重试'}`;
+          } else if (!sonovelStatus.textContent) {
+            sonovelStatus.textContent = `服务器归档目录：${data.archive_path || 'txt/download'}，现有 ${data.archive_count || 0} 个文件。`;
+          }
+          stopSonovelPolling();
+        }
+        return data;
+      } catch (error) {
+        sonovelStatus.textContent = `SoNovel 状态读取失败：${error.message}`;
+        throw error;
+      } finally {
+        if (manual) setButtonLoading(sonovelRefreshBtn, false);
+      }
+    }
+    async function searchSonovel() {
+      const query = sonovelSearchInput.value.trim();
+      if (!query) {
+        sonovelStatus.textContent = '请输入书名或作者。';
+        sonovelSearchInput.focus();
+        return;
+      }
+      setButtonLoading(sonovelSearchBtn, true, '搜索中');
+      sonovelStatus.textContent = '正在搜索...';
+      sonovelSearchResults = [];
+      renderSonovelResults();
+      try {
+        const res = await fetch(`api/sonovel/search?q=${encodeURIComponent(query)}&t=${Date.now()}`, { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        sonovelSearchId = data.search_id || '';
+        sonovelSearchResults = data.results || [];
+        renderSonovelResults();
+        sonovelStatus.textContent = sonovelSearchResults.length ? `找到 ${sonovelSearchResults.length} 条结果。勾选授权确认后即可下载。` : '没有找到可用结果。';
+      } catch (error) {
+        sonovelStatus.textContent = `搜索失败：${error.message}`;
+      } finally {
+        setButtonLoading(sonovelSearchBtn, false);
+      }
+    }
+    async function startSonovelDownload(resultIndex) {
+      if (!sonovelConsent.checked) {
+        sonovelStatus.textContent = '请先确认你对该文本具有合法访问或处理授权。';
+        return;
+      }
+      if (!sonovelSearchId) {
+        sonovelStatus.textContent = '搜索结果已失效，请重新搜索。';
+        return;
+      }
+      sonovelStatus.textContent = '正在提交下载任务...';
+      try {
+        const res = await fetch('api/sonovel/download', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            search_id: sonovelSearchId,
+            result_index: Number(resultIndex),
+            format: sonovelFormat.value,
+            authorized: true,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        sonovelActiveJobId = data.job?.job_id || '';
+        sonovelStatus.textContent = data.job?.message || '下载任务已开始。';
+        startSonovelPolling();
+        await loadSonovelStatus();
+      } catch (error) {
+        sonovelStatus.textContent = `提交失败：${error.message}`;
+      }
+    }
+    function enterSleepMode() {
+      if (document.body.classList.contains('sleeping')) return;
+      document.body.classList.add('sleeping');
+      sleepLock.setAttribute('aria-hidden', 'false');
+      sleepPassword.value = '';
+      sleepError.textContent = '';
+      window.setTimeout(() => sleepPassword.focus(), 50);
+    }
+    function resetSleepTimer() {
+      if (document.body.classList.contains('sleeping')) return;
+      window.clearTimeout(sleepTimer);
+      sleepTimer = window.setTimeout(enterSleepMode, SLEEP_AFTER_MS);
+    }
+    function unlockSleepMode() {
+      if (sleepPassword.value !== SLEEP_PASSWORD) {
+        sleepError.textContent = '密码不对';
+        sleepPassword.select();
+        return;
+      }
+      document.body.classList.remove('sleeping');
+      sleepLock.setAttribute('aria-hidden', 'true');
+      sleepPassword.value = '';
+      sleepError.textContent = '';
+      resetSleepTimer();
+    }
+    function setButtonLoading(button, loading, text) {
+      if (!button) return;
+      if (!button.dataset.idleText) button.dataset.idleText = button.textContent;
+      button.disabled = loading;
+      button.classList.toggle('loading', loading);
+      button.textContent = loading ? text : button.dataset.idleText;
+    }
+    function money(value) {
+      const num = Number(value || 0);
+      return num.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    function pct(value) {
+      if (value === null || value === undefined || value === '') return '--';
+      const num = Number(value);
+      return `${num > 0 ? '+' : ''}${num.toFixed(2)}%`;
+    }
+    function priceText(row) {
+      if (row.price === null || row.price === undefined || row.price === '') return '--';
+      const value = Number(row.price).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+      const confirmed = row.quantity_unit === '份' && row.time ? `<div class="muted">确认 ${escapeHtml(row.time)}</div>` : '';
+      return `${value}${row.price_unit ? ` ${escapeHtml(row.price_unit)}` : ''}${confirmed}`;
+    }
+    function quantityText(row) {
+      if (row.quantity === null || row.quantity === undefined || row.quantity === '') return '--';
+      const digits = row.quantity_unit === '股' ? 0 : 2;
+      const value = Number(row.quantity).toLocaleString('zh-CN', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+      const pending = row.quantity_unit === '份' && row.quantity_verified === false ? '<div class="muted">待核对</div>' : '';
+      return `${value}${row.quantity_unit ? ` ${escapeHtml(row.quantity_unit)}` : ''}${pending}`;
+    }
+    function dailyText(row) {
+      if (row.daily_profit !== null && row.daily_profit !== undefined) {
+        const daily = Number(row.daily_profit);
+        const quote = row.change_pct === null || row.change_pct === undefined || row.change_pct === ''
+          ? ''
+          : `<div class="muted">净值 ${pct(row.change_pct)}</div>`;
+        return `<span class="${cls(daily)}">${daily >= 0 ? '+' : ''}${money(daily)}</span>${quote}`;
+      }
+      return pct(row.change_pct);
+    }
+    function editableAttr(row, field) {
+      const editable = (row.editable_fields || []).includes(field);
+      if (!editable) return '';
+      const raw = row[field];
+      const color = ['profit', 'daily_profit'].includes(field) ? cls(raw) : '';
+      return ` class="editable-cell ${color}" title="双击修改，回车或失焦保存" data-edit-code="${escapeHtml(row.code)}" data-edit-field="${field}" data-edit-value="${raw ?? ''}" data-edit-price="${row.price ?? ''}"`;
+    }
+    function cls(value) {
+      const num = Number(value || 0);
+      return num > 0 ? 'pos' : (num < 0 ? 'neg' : '');
+    }
+    function sizeText(bytes) {
+      if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+      if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+      return `${bytes} B`;
+    }
+    function recalculatePortfolio(p) {
+      p.total = Number(p.holdings.reduce((sum, row) => sum + Number(row.value || 0), 0).toFixed(2));
+      p.known_profit = Number(p.holdings.reduce((sum, row) => sum + (row.profit === null || row.profit === undefined ? 0 : Number(row.profit)), 0).toFixed(2));
+      p.by_category = {};
+      for (const row of p.holdings) {
+        p.by_category[row.category] = Number(((p.by_category[row.category] || 0) + Number(row.value || 0)).toFixed(2));
+      }
+    }
+    function renderPortfolioSummary(p) {
+      portfolioTotal.textContent = money(p.total);
+      portfolioProfit.textContent = `${p.known_profit >= 0 ? '+' : ''}${money(p.known_profit)}`;
+      portfolioProfit.className = `value ${cls(p.known_profit)}`;
+      portfolioCategories.textContent = Object.keys(p.by_category || {}).length;
+      const max = Math.max(...p.holdings.map(row => Number(row.value || 0)), 1);
+      portfolioBars.innerHTML = p.holdings
+        .slice()
+        .sort((a, b) => Number(b.value || 0) - Number(a.value || 0))
+        .map(row => `<div class="bar-row">
+          <div class="bar-label" title="${escapeHtml(row.source || '')}">${escapeHtml(row.name)}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:${Math.max(3, Number(row.value || 0) / max * 100).toFixed(1)}%"></div></div>
+          <div class="num">${money(row.value)}</div>
+          <div class="num ${cls(row.profit)}">${row.profit === null || row.profit === undefined ? '--' : money(row.profit)}</div>
+        </div>`).join('');
+    }
+    function quoteControl(row) {
+      if (!row.refreshable) return '<td class="quote-action">--</td>';
+      const state = quoteStatus.get(row.code) || {};
+      const loading = state.kind === 'loading';
+      const title = loading ? '正在刷新行情' : `单独刷新 ${row.name}`;
+      const stateText = state.kind === 'error'
+        ? `<div class="quote-state error" title="${escapeHtml(state.message || '')}">失败</div>`
+        : (state.kind === 'success' ? '<div class="quote-state">最新</div>' : '');
+      return `<td class="quote-action"><button type="button" class="quote-refresh-btn${loading ? ' loading' : ''}" data-quote-refresh="${escapeHtml(row.code)}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}" ${loading ? 'disabled' : ''}><span class="quote-refresh-icon">↻</span></button>${stateText}</td>`;
+    }
+    function renderHoldings(p) {
+      holdingsBody.innerHTML = p.holdings.map(row => `<tr data-holding-code="${escapeHtml(row.code || '')}">
+        <td title="${escapeHtml(row.source || '')}">${escapeHtml(row.name)}</td>
+        <td>${escapeHtml(row.category)}</td>
+        <td>${priceText(row)}</td>
+        <td${editableAttr(row, 'quantity')}>${quantityText(row)}</td>
+        <td${editableAttr(row, 'value')}>${money(row.value)}</td>
+        <td${editableAttr(row, 'profit')}>${row.profit === null || row.profit === undefined ? '--' : money(row.profit)}</td>
+        <td${editableAttr(row, 'daily_profit')}>${dailyText(row)}</td>
+        ${quoteControl(row)}
+      </tr>`).join('');
+    }
+    function renderPortfolio(p) {
+      currentPortfolio = p;
+      recalculatePortfolio(p);
+      renderPortfolioSummary(p);
+      if (!activeCellInput) renderHoldings(p);
+    }
+    function updatePortfolioFreshness() {
+      if (!currentPortfolio) return;
+      const refreshable = currentPortfolio.holdings.filter(row => row.refreshable);
+      const pending = refreshable.filter(row => quoteStatus.get(row.code)?.kind === 'loading').length;
+      const failed = refreshable.filter(row => quoteStatus.get(row.code)?.kind === 'error').length;
+      const succeeded = refreshable.filter(row => quoteStatus.get(row.code)?.kind === 'success').length;
+      if (pending) {
+        portfolioFreshness.textContent = `持仓已显示，正在并行刷新行情：${succeeded}/${refreshable.length} 项完成`;
+      } else if (failed) {
+        portfolioFreshness.textContent = `行情刷新完成：${succeeded} 项成功，${failed} 项失败；失败项沿用上次数据`;
+      } else if (succeeded) {
+        portfolioFreshness.textContent = `行情已更新：${succeeded}/${refreshable.length} 项，${new Date().toLocaleString('zh-CN', { hour12: false })}`;
+      } else {
+        portfolioFreshness.textContent = `持仓已载入：${currentPortfolio.generated_at}`;
+      }
+    }
+    function refreshQr() {
+      const now = new Date();
+      img.src = `current.png?t=${now.getTime()}`;
+      time.textContent = `最后刷新：${now.toLocaleString('zh-CN', { hour12: false })}`;
+    }
+
+    function addFiles(fileList) {
+      for (const file of fileList) {
+        pending.push({ file, id: `${Date.now()}-${Math.random().toString(16).slice(2)}`, url: file.type.startsWith('image/') ? URL.createObjectURL(file) : '' });
+      }
+      renderQueue();
+    }
+    function renderQueue() {
+      uploadBtn.disabled = !pending.length;
+      if (!pending.length) {
+        queue.innerHTML = '<span class="empty-hint">拖入文件或粘贴截图</span>';
+        return;
+      }
+      queue.innerHTML = pending.map(item => {
+        const preview = item.url ? `<img src="${item.url}" alt="">` : '<div class="file-icon">文件</div>';
+        return `<div class="file-chip" title="${escapeHtml(item.file.name)}">${preview}<button class="remove-file" type="button" data-id="${item.id}">×</button><div class="file-name">${escapeHtml(item.file.name)}</div></div>`;
+      }).join('');
+    }
+    function clearPending() {
+      for (const item of pending) if (item.url) URL.revokeObjectURL(item.url);
+      pending.length = 0;
+      files.value = '';
+      renderQueue();
+    }
+    async function loadUploads() {
+      const res = await fetch(`uploads.json?t=${Date.now()}`);
+      const rows = await res.json();
+      uploads.innerHTML = rows.map(file => {
+        const when = new Date(file.mtime * 1000).toLocaleString('zh-CN', { hour12: false });
+        return `<li><a href="${escapeHtml(file.url)}" target="_blank" rel="noopener">${escapeHtml(file.name)}</a><span class="muted">${sizeText(file.size)} · ${when}</span></li>`;
+      }).join('');
+    }
+    async function clearUploadedScreenshotsOnPageLoad() {
+      clearPending();
+      const res = await fetch('api/uploads/clear', { method: 'POST' });
+      const result = await res.json();
+      if (!res.ok || !result.ok) throw new Error(result.errors?.join('; ') || `HTTP ${res.status}`);
+      uploads.innerHTML = '';
+    }
+    pickBtn.addEventListener('click', () => files.click());
+    files.addEventListener('change', () => { addFiles(files.files); files.value = ''; });
+    queue.addEventListener('click', event => {
+      const btn = event.target.closest('.remove-file');
+      if (!btn) return;
+      const index = pending.findIndex(item => item.id === btn.dataset.id);
+      if (index !== -1) {
+        if (pending[index].url) URL.revokeObjectURL(pending[index].url);
+        pending.splice(index, 1);
+        renderQueue();
+      }
+    });
+    composer.addEventListener('dragover', event => { event.preventDefault(); composer.classList.add('dragover'); });
+    composer.addEventListener('dragleave', () => composer.classList.remove('dragover'));
+    composer.addEventListener('drop', event => { event.preventDefault(); composer.classList.remove('dragover'); addFiles(event.dataTransfer.files); });
+    document.addEventListener('paste', event => {
+      const pasted = [...(event.clipboardData?.files || [])];
+      if (pasted.length) addFiles(pasted);
+    });
+    uploadBtn.addEventListener('click', async () => {
+      if (!pending.length) return;
+      const data = new FormData();
+      for (const item of pending) data.append('files', item.file, item.file.name);
+      uploadBtn.disabled = true;
+      status.textContent = `正在上传 ${pending.length} 个文件...`;
+      try {
+        const res = await fetch('/upload', { method: 'POST', body: data });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        status.textContent = '上传完成';
+        clearPending();
+        await loadUploads();
+      } catch (error) {
+        status.textContent = `上传失败：${error.message}`;
+      } finally {
+        uploadBtn.disabled = !pending.length;
+      }
+    });
+
+    async function refreshQuote(code) {
+      if (quoteRequests.has(code)) return quoteRequests.get(code);
+      quoteStatus.set(code, { kind: 'loading' });
+      if (currentPortfolio) {
+        renderPortfolio(currentPortfolio);
+        updatePortfolioFreshness();
+      }
+      const task = (async () => {
+        try {
+          const res = await fetch(`api/finance/quote?code=${encodeURIComponent(code)}&t=${Date.now()}`);
+          const data = await res.json();
+          if (!data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+          if (currentPortfolio) {
+            const index = currentPortfolio.holdings.findIndex(row => row.code === code);
+            if (index !== -1) currentPortfolio.holdings[index] = data.holding;
+          }
+          quoteStatus.set(code, { kind: 'success', refreshedAt: data.refreshed_at });
+          return true;
+        } catch (error) {
+          quoteStatus.set(code, { kind: 'error', message: error.message });
+          return false;
+        } finally {
+          quoteRequests.delete(code);
+          if (currentPortfolio) {
+            renderPortfolio(currentPortfolio);
+            updatePortfolioFreshness();
+          }
+        }
+      })();
+      quoteRequests.set(code, task);
+      return task;
+    }
+
+    async function refreshAllQuotes() {
+      if (!currentPortfolio) return;
+      const codes = currentPortfolio.holdings.filter(row => row.refreshable).map(row => row.code);
+      await Promise.all(codes.map(code => refreshQuote(code)));
+    }
+
+    async function loadPortfolio() {
+      setButtonLoading(portfolioRefreshBtn, true, '刷新中');
+      portfolioFreshness.textContent = '正在读取本地持仓...';
+      try {
+        const res = await fetch(`api/finance/portfolio?t=${Date.now()}`);
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        quoteStatus.clear();
+        renderPortfolio(data.portfolio);
+        updatePortfolioFreshness();
+        await refreshAllQuotes();
+      } catch (error) {
+        portfolioFreshness.textContent = `刷新失败：${error.message}`;
+      } finally {
+        setButtonLoading(portfolioRefreshBtn, false);
+      }
+    }
+
+    function cancelCellEdit() {
+      if (activeCellInput) activeCellInput.dataset.cancelled = '1';
+      activeCellInput = null;
+      if (currentPortfolio) renderPortfolio(currentPortfolio);
+    }
+    async function saveCellEdit(input) {
+      if (!input || input.dataset.saving === '1') return;
+      if (input.dataset.cancelled === '1') return;
+      const value = input.value.trim();
+      if (!/^[-+]?\d+(\.\d+)?$/.test(value)) {
+        portfolioFreshness.textContent = '保存失败：请输入数字';
+        cancelCellEdit();
+        return;
+      }
+      input.dataset.saving = '1';
+      input.disabled = true;
+      const cell = input.closest('[data-edit-code]');
+      portfolioFreshness.textContent = '正在保存持仓数据...';
+      try {
+        const res = await fetch('api/finance/holding-update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code: cell.dataset.editCode,
+            field: cell.dataset.editField,
+            value,
+            price: cell.dataset.editPrice || null
+          })
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        activeCellInput = null;
+        renderPortfolio(data.portfolio);
+        portfolioFreshness.textContent = `已保存并刷新：${data.portfolio.generated_at}`;
+      } catch (error) {
+        portfolioFreshness.textContent = `保存失败：${error.message}`;
+        cancelCellEdit();
+      }
+    }
+    function startCellEdit(cell) {
+      if (activeCellInput) saveCellEdit(activeCellInput);
+      const value = cell.dataset.editValue || '';
+      cell.innerHTML = `<input class="cell-editor" type="number" step="any" value="${escapeHtml(value)}">`;
+      const input = cell.querySelector('input');
+      activeCellInput = input;
+      input.focus();
+      input.select();
+      input.addEventListener('keydown', event => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          saveCellEdit(input);
+        } else if (event.key === 'Escape') {
+          event.preventDefault();
+          cancelCellEdit();
+        }
+      });
+      input.addEventListener('blur', () => saveCellEdit(input));
+    }
+    holdingsBody.addEventListener('dblclick', event => {
+      const cell = event.target.closest('.editable-cell');
+      if (!cell || !holdingsBody.contains(cell)) return;
+      startCellEdit(cell);
+    });
+    holdingsBody.addEventListener('click', event => {
+      const button = event.target.closest('[data-quote-refresh]');
+      if (!button || !holdingsBody.contains(button)) return;
+      refreshQuote(button.dataset.quoteRefresh);
+    });
+
+    function taskInput(taskId, param, idx) {
+      const label = escapeHtml(param.label || param.key);
+      const key = escapeHtml(param.key);
+      const unit = param.unit ? `<span class="task-unit">单位：${escapeHtml(param.unit)}</span>` : '';
+      const full = label.length > 16 || param.explanation ? ' full' : '';
+      const value = param.value ?? '';
+      const input = param.type === 'bool'
+        ? `<select data-param="${idx}"><option value="true" ${value ? 'selected' : ''}>启用/是</option><option value="false" ${!value ? 'selected' : ''}>停用/否</option></select>`
+        : `<input type="${param.type === 'number' ? 'number' : 'text'}" ${param.type === 'number' ? 'step="any"' : ''} value="${escapeHtml(value)}" data-param="${idx}">`;
+      return `<label class="task-field${full}"><span>${label} ${unit}</span>${input}<div class="task-help">${escapeHtml(param.explanation || '')}</div><div class="task-technical">字段：${key}</div></label>`;
+    }
+    function taskCard(task) {
+      if (task.manual_only) {
+        return `<article class="task-card" data-task-card="${task.id}">
+          <div class="task-head">
+            <div><h3 class="task-title">${escapeHtml(task.name)} <span class="badge">人工发布</span></h3><p>${escapeHtml(task.description || '')}</p></div>
+            <span class="badge">已停用</span>
+          </div>
+          <div class="task-status" data-task-status="${task.id}">写作完成并通过质检后自动上传草稿，不会自动发布。</div>
+        </article>`;
+      }
+      const params = (task.params || []).map((param, idx) => taskInput(task.id, param, idx)).join('');
+      const scheduleHelp = task.runner === 'cron'
+        ? `当前含义：${escapeHtml(task.schedule_human || '')}。高级格式：分 时 日 月 周。`
+        : `当前含义：${escapeHtml(task.schedule_human || '')}。例如 10min 表示每 10 分钟一次。`;
+      return `<article class="task-card" data-task-card="${task.id}">
+        <div class="task-head">
+          <div><h3 class="task-title">${escapeHtml(task.name)} <span class="badge">${escapeHtml(task.category)}</span></h3><p>${escapeHtml(task.description || '')}</p></div>
+          <label class="switch-line"><input type="checkbox" data-task-enabled="${task.id}" ${task.enabled ? 'checked' : ''}>启用</label>
+        </div>
+        <div class="task-grid">
+          <label class="task-field full"><span>${task.runner === 'cron' ? '运行时间' : '运行间隔'}</span><input type="text" value="${escapeHtml(task.schedule || '')}" data-task-schedule="${task.id}"><div class="task-help">${scheduleHelp}</div></label>
+          ${params}
+        </div>
+        <div class="task-actions"><button type="button" data-task-save="${task.id}">保存</button><button type="button" class="secondary" data-task-run="${task.id}">立即运行一次</button></div>
+        <div class="task-status" data-task-status="${task.id}"></div>
+      </article>`;
+    }
+    async function loadScheduledTasks() {
+      setButtonLoading(taskRefreshBtn, true, '读取中');
+      try {
+        const res = await fetch(`api/scheduled-tasks?t=${Date.now()}`);
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        scheduledTasks = data.tasks || [];
+        const financeCats = new Set(['股票', '基金', '黄金']);
+        financeTasks.innerHTML = scheduledTasks.filter(t => financeCats.has(t.category)).map(taskCard).join('');
+        novelTasks.innerHTML = scheduledTasks.filter(t => t.category === '小说').map(taskCard).join('');
+      } finally {
+        setButtonLoading(taskRefreshBtn, false);
+      }
+    }
+    function collectTaskPayload(taskId) {
+      const task = scheduledTasks.find(item => item.id === taskId);
+      const card = document.querySelector(`[data-task-card="${CSS.escape(taskId)}"]`);
+      const params = (task?.params || []).map((param, idx) => {
+        const input = card.querySelector(`[data-param="${idx}"]`);
+        let value = input?.value ?? '';
+        if (param.type === 'bool') value = value === 'true';
+        return { path: param.path, value };
+      });
+      return {
+        id: taskId,
+        enabled: Boolean(card.querySelector(`[data-task-enabled="${CSS.escape(taskId)}"]`)?.checked),
+        schedule: card.querySelector(`[data-task-schedule="${CSS.escape(taskId)}"]`)?.value || '',
+        params
+      };
+    }
+    async function saveTask(taskId) {
+      const statusEl = document.querySelector(`[data-task-status="${CSS.escape(taskId)}"]`);
+      statusEl.textContent = '保存中...';
+      try {
+        const res = await fetch('api/scheduled-tasks/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(collectTaskPayload(taskId)) });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        statusEl.textContent = '已保存';
+        await loadScheduledTasks();
+      } catch (error) {
+        statusEl.textContent = `保存失败：${error.message}`;
+      }
+    }
+    async function runTaskNow(taskId) {
+      const statusEl = document.querySelector(`[data-task-status="${CSS.escape(taskId)}"]`);
+      statusEl.textContent = '正在运行...';
+      try {
+        const res = await fetch('api/scheduled-tasks/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: taskId }) });
+        const data = await res.json();
+        const result = data.result || {};
+        if (!data.ok) throw new Error(data.error || result.stderr || `退出码 ${result.returncode}`);
+        statusEl.textContent = result.stdout ? `运行完成：${result.stdout.slice(-220)}` : '运行完成';
+      } catch (error) {
+        statusEl.textContent = `运行失败：${error.message}`;
+      }
+    }
+    document.addEventListener('click', event => {
+      const save = event.target.closest('[data-task-save]');
+      const run = event.target.closest('[data-task-run]');
+      if (save) saveTask(save.dataset.taskSave);
+      if (run) runTaskNow(run.dataset.taskRun);
+    });
+    taskRefreshBtn.addEventListener('click', () => loadScheduledTasks().catch(console.error));
+
+    function fmSizeText(bytes) { return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : (bytes >= 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${bytes} B`); }
+    function fmTimeText(ts) { return new Date(ts * 1000).toLocaleString('zh-CN', { hour12: false }); }
+    function fmCopyText(text) {
+      if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      textarea.style.top = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      const copied = document.execCommand('copy');
+      textarea.remove();
+      return copied ? Promise.resolve() : Promise.reject(new Error('浏览器不支持自动复制'));
+    }
+    function fmRenderBreadcrumb() {
+      if (!fmCurrentPath) { fmBreadcrumb.innerHTML = '<span>/ AI 根目录</span>'; return; }
+      const parts = fmCurrentPath.split('/');
+      let acc = '';
+      let html = '<a href="#" data-nav="">/</a>';
+      for (const part of parts) {
+        if (!part) continue;
+        acc = acc ? `${acc}/${part}` : part;
+        html += ` <span>›</span> <a href="#" data-nav="${escapeHtml(acc)}">${escapeHtml(part)}</a>`;
+      }
+      fmBreadcrumb.innerHTML = html;
+    }
+    function fmRenderTable() {
+      fmSelected.clear();
+      fmDownloadBtn.disabled = true;
+      if (!fmEntries.length) {
+        fmTbody.innerHTML = '<tr><td colspan="4" class="muted">此目录为空</td></tr>';
+        return;
+      }
+      fmTbody.innerHTML = fmEntries.map((entry, i) => `<tr>
+        <td><input type="checkbox" data-idx="${i}" data-path="${escapeHtml(entry.path)}" ${entry.type === 'dir' ? 'disabled' : ''}></td>
+        <td><div class="fm-name-cell"><a href="#" class="fm-link" data-idx="${i}" data-path="${escapeHtml(entry.path)}" data-type="${entry.type}">${entry.type === 'dir' ? '[目录]' : '[文件]'} ${escapeHtml(entry.name)}</a>${entry.is_text ? `<button type="button" class="fm-copy-btn" data-path="${escapeHtml(entry.path)}" title="复制文件全部文本">复制</button>` : ''}</div></td>
+        <td class="size-cell">${entry.type === 'dir' ? '-' : fmSizeText(entry.size)}</td>
+        <td class="meta-cell">${fmTimeText(entry.mtime)}</td>
+      </tr>`).join('');
+    }
+    async function fmLoad(path) {
+      fmCurrentPath = path;
+      fmStatus.textContent = '加载中...';
+      try {
+        const res = await fetch(`api/ai-files?path=${encodeURIComponent(path)}&t=${Date.now()}`);
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error);
+        fmEntries = data.entries || [];
+        fmRenderBreadcrumb();
+        fmRenderTable();
+        fmStatus.textContent = `共 ${fmEntries.length} 项`;
+      } catch (error) {
+        fmStatus.textContent = `加载失败：${error.message}`;
+      }
+    }
+    fmBreadcrumb.addEventListener('click', event => {
+      const link = event.target.closest('a[data-nav]');
+      if (!link) return;
+      event.preventDefault();
+      fmLoad(link.dataset.nav);
+    });
+    fmTbody.addEventListener('click', async event => {
+      const link = event.target.closest('a.fm-link');
+      const copyBtn = event.target.closest('.fm-copy-btn');
+      const cb = event.target.closest('input[type="checkbox"]');
+      if (copyBtn) {
+        const originalText = copyBtn.textContent;
+        copyBtn.disabled = true;
+        copyBtn.textContent = '复制中';
+        fmStatus.textContent = `正在读取 ${copyBtn.dataset.path}...`;
+        try {
+          const res = await fetch(`api/ai-file-content?path=${encodeURIComponent(copyBtn.dataset.path)}&t=${Date.now()}`);
+          const data = await res.json();
+          if (!data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+          await fmCopyText(data.content);
+          copyBtn.textContent = '已复制';
+          copyBtn.classList.add('copied');
+          fmStatus.textContent = `已复制 ${copyBtn.dataset.path}`;
+          setTimeout(() => {
+            copyBtn.textContent = originalText;
+            copyBtn.classList.remove('copied');
+            copyBtn.disabled = false;
+          }, 2000);
+        } catch (error) {
+          copyBtn.textContent = originalText;
+          copyBtn.disabled = false;
+          fmStatus.textContent = `复制失败：${error.message}`;
+        }
+        return;
+      }
+      if (link) {
+        event.preventDefault();
+        if (link.dataset.type === 'dir') fmLoad(link.dataset.path);
+        else window.open(`api/ai-preview?path=${encodeURIComponent(link.dataset.path)}`, '_blank', 'noopener');
+      }
+      if (cb) {
+        if (cb.checked) fmSelected.add(cb.dataset.path); else fmSelected.delete(cb.dataset.path);
+        fmDownloadBtn.disabled = fmSelected.size === 0;
+      }
+    });
+    fmSelectAllBtn.addEventListener('click', () => {
+      const files = fmEntries.filter(entry => entry.type === 'file');
+      const select = fmSelected.size !== files.length;
+      fmSelected.clear();
+      if (select) files.forEach(file => fmSelected.add(file.path));
+      fmTbody.querySelectorAll('input[type="checkbox"]:not(:disabled)').forEach(cb => { cb.checked = select; });
+      fmDownloadBtn.disabled = fmSelected.size === 0;
+    });
+    fmDownloadBtn.addEventListener('click', async () => {
+      if (!fmSelected.size) return;
+      const res = await fetch('api/ai-zip', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paths: [...fmSelected] }) });
+      if (!res.ok) { fmStatus.textContent = '下载失败'; return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'ai_files.zip';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+    fmUploadBtn.addEventListener('click', () => fmFileInput.click());
+    fmFileInput.addEventListener('change', async () => {
+      if (!fmFileInput.files.length) return;
+      const data = new FormData();
+      data.append('dir', fmCurrentPath);
+      for (const file of fmFileInput.files) data.append('files', file);
+      fmStatus.textContent = `正在上传 ${fmFileInput.files.length} 个文件...`;
+      const res = await fetch('api/ai-upload', { method: 'POST', body: data });
+      const result = await res.json();
+      fmStatus.textContent = result.ok ? `上传完成：${result.saved.length} 个文件` : `上传失败：${result.error}`;
+      fmFileInput.value = '';
+      await fmLoad(fmCurrentPath);
+    });
+
+    function setClockLinks(state) {
+      const outputs = state?.outputs || {};
+      const stamp = Date.now();
+      const webm = outputs.webm || 'videos/cartoon_clock_6_to_7_transparent.webm';
+      const mov = outputs.mov || 'videos/cartoon_clock_6_to_7_transparent_compact_prores4444.mov';
+      const preview = outputs.preview || 'videos/cartoon_clock_preview.png';
+      webmLink.href = webm;
+      movLink.href = mov;
+      clockVideo.poster = `${preview}?t=${stamp}`;
+      clockVideo.querySelector('source').src = `${webm}?t=${stamp}`;
+      clockVideo.load();
+    }
+    function renderClockStatus(state) {
+      const progress = Math.max(0, Math.min(100, Number(state.progress || 0)));
+      clockProgress.value = progress;
+      clockProgressText.textContent = `${progress}%`;
+      clockStatus.textContent = state.phase || '';
+      generateClockBtn.disabled = Boolean(state.running);
+      if (state.params) {
+        if (state.params.start) clockStart.value = state.params.start;
+        if (state.params.end) clockEnd.value = state.params.end;
+        if (state.params.speed) clockSpeed.value = Math.round(Number(state.params.speed));
+        if (state.params.style) clockStyle.value = state.params.style;
+      }
+      if (!state.running && state.ok && state.outputs) setClockLinks(state);
+    }
+    async function loadClockProgress() {
+      const res = await fetch(`api/clock/progress?t=${Date.now()}`);
+      const data = await res.json();
+      renderClockStatus(data.status);
+      return data.status;
+    }
+    function startClockPolling() {
+      if (clockPoll) clearInterval(clockPoll);
+      clockPoll = setInterval(async () => {
+        try {
+          const state = await loadClockProgress();
+          if (!state.running) { clearInterval(clockPoll); clockPoll = null; }
+        } catch (error) {
+          clockStatus.textContent = `进度读取失败：${error.message}`;
+        }
+      }, 1000);
+    }
+    generateClockBtn.addEventListener('click', async () => {
+      clockStatus.textContent = '提交生成任务...';
+      const payload = { start: clockStart.value, end: clockEnd.value, speed: Number(clockSpeed.value || 240), style: clockStyle.value };
+      const res = await fetch('api/clock/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const data = await res.json();
+      if (!data.ok) { clockStatus.textContent = data.error || '提交失败'; return; }
+      renderClockStatus(data.status);
+      startClockPolling();
+    });
+
+    for (const eventName of ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'wheel']) {
+      document.addEventListener(eventName, resetSleepTimer, { passive: true });
+    }
+    sleepUnlockBtn.addEventListener('click', unlockSleepMode);
+    sleepPassword.addEventListener('keydown', event => {
+      if (event.key === 'Enter') unlockSleepMode();
+    });
+
+    portfolioRefreshBtn.addEventListener('click', loadPortfolio);
+    novelSampleRefreshBtn.addEventListener('click', () => loadNovelSampleJobs({ manual: true }));
+    sonovelSearchBtn.addEventListener('click', searchSonovel);
+    sonovelSearchInput.addEventListener('keydown', event => {
+      if (event.key === 'Enter') searchSonovel();
+    });
+    sonovelConsent.addEventListener('change', renderSonovelResults);
+    sonovelResults.addEventListener('click', event => {
+      const button = event.target.closest('[data-sonovel-download]');
+      if (button && !button.disabled) startSonovelDownload(button.dataset.sonovelDownload);
+    });
+    sonovelRefreshBtn.addEventListener('click', () => loadSonovelStatus({ manual: true }).catch(() => {}));
+    resetSleepTimer();
+    refreshQr();
+    clearUploadedScreenshotsOnPageLoad().catch(error => { status.textContent = `历史截图清理失败：${error.message}`; loadUploads().catch(() => {}); });
+    loadPortfolio();
+    loadScheduledTasks().catch(error => { financeTasks.innerHTML = `<div class="status">任务读取失败：${escapeHtml(error.message)}</div>`; });
+    fmLoad('');
+    loadNovelSampleJobs();
+    renderSonovelResults();
+    loadSonovelStatus().catch(() => {});
+    novelSamplePoll = setInterval(() => {
+      if (!document.hidden) loadNovelSampleJobs();
+    }, 5000);
+    loadClockProgress().then(state => { if (state.running) startClockPolling(); }).catch(() => {});
+    setInterval(refreshQr, 2000);
+  </script>
+</body>
+</html>

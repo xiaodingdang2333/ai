@@ -15,6 +15,12 @@ This file mirrors the durable workspace instructions and shared memory needed by
 - HARD 阻断，HIGH 必须实际返修重审，MEDIUM/LOW 记录并在 5/10 章及 ARC 审计处理。项目预检、holistic READY、服务器代写和上传复验都检查此层。自动校验不能证明文学质量；试点质量结论需要用户/指定读者盲评。
 - 若 Strong QA/P0/READY 都显示 PASS 但 holistic READY 仍报 `surface_gate` 或 ruleset 缺失，先对当前 blob 运行 `backfill_exact_blob_registry_fields.py` dry-run；仅在所有既有证据逐项精确匹配时才允许回填注册表，绝不改正文或伪造状态。
 
+## 2026-07-14 8090 SoNovel 下载
+
+- 8090 小说模块使用独立的 `freeok/so-novel` v1.11.0 运行目录 `/home/admin/ai/tools/so-novel/`；旧 `tools/sonovel-tool` 仅保留历史，禁止作为运行时修改或调用。
+- 网页下载必须双存：先受控生成，再归档到 `/home/admin/ai/txt/download/`，同时经 `/api/ai-download` 提供给打开网页的设备下载。服务按需启动、串行运行，Java 堆上限 256M；不得公开 7765 端口。
+- 仅处理公共领域、开放许可、官方允许下载或用户确认已获授权的材料；不得绕过付费、登录、DRM、验证码或反爬限制。
+
 ## Qimao Submission Rule Trigger
 
 - When the user asks to write, revise, package, or evaluate fiction for 七猫投稿/七猫内投, first read `F:\ai\memory\qimao-submission-rules.md`. Apply its ranking-derived rules: title must visibly promise the genre hook; first chapter starts inside a crisis, not a setting lecture; first 100 words need curiosity, first 300 words need emotion/conflict/gimmick; 女主 must quickly gain a visible 反制筹码; each chapter needs an immediate 局 and a chapter-end new 危机.

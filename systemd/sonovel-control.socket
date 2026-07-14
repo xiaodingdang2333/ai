@@ -1,0 +1,13 @@
+[Unit]
+Description=Restricted SoNovel control socket
+
+[Socket]
+ListenStream=/run/sonovel-control.sock
+SocketUser=root
+SocketGroup=admin
+SocketMode=0660
+RemoveOnStop=true
+Accept=yes
+
+[Install]
+WantedBy=sockets.target

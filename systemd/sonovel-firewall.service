@@ -1,0 +1,11 @@
+[Unit]
+Description=Restrict SoNovel WebUI to loopback clients
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c '/usr/sbin/iptables -C INPUT ! -i lo -p tcp --dport 7765 -j REJECT 2>/dev/null || /usr/sbin/iptables -I INPUT ! -i lo -p tcp --dport 7765 -j REJECT'
+ExecStop=/bin/sh -c '/usr/sbin/iptables -D INPUT ! -i lo -p tcp --dport 7765 -j REJECT 2>/dev/null || true'
+
+[Install]
+WantedBy=multi-user.target

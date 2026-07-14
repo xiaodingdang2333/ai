@@ -96,7 +96,7 @@ def main():
     parser = argparse.ArgumentParser(description="Clean bounded SoNovel cache files")
     parser.add_argument("--db", type=Path, default=Path("/home/admin/ai/runtime/novel-actions/state.sqlite3"))
     parser.add_argument("--analysis-root", type=Path, default=Path("/home/admin/ai/txt/排行榜/拆书分析"))
-    parser.add_argument("--downloads", type=Path, default=Path("/home/admin/ai/tools/sonovel-tool/downloads"))
+    parser.add_argument("--downloads", type=Path, default=Path("/home/admin/ai/tools/so-novel/downloads"))
     parser.add_argument("--output", type=Path, default=Path("/home/admin/ai/output/sonovel"))
     parser.add_argument("--state-root", type=Path, default=Path("/home/admin/ai/runtime/novel-actions"))
     parser.add_argument("--log", type=Path, default=Path("/home/admin/ai/runtime/novel-actions/logs/cache-cleanup.log"))

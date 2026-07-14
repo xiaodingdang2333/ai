@@ -4,6 +4,8 @@ set -euo pipefail
 SERVICE=sonovel.service
 CLIENT=/home/admin/ai/scripts/sonovel-client.js
 CONTROL_CLIENT=/home/admin/ai/scripts/sonovel-control-client.py
+LOCK_FILE=/home/admin/ai/tools/so-novel/downloads/.operation.lock
+LOCK_WAIT_SECONDS=${SONOVEL_LOCK_WAIT_SECONDS:-10}
 
 service_ctl() {
   /usr/bin/python3 "$CONTROL_CLIENT" "$1"
@@ -13,10 +15,25 @@ stop_service() {
   service_ctl stop
 }
 
+acquire_operation_lock() {
+  mkdir -p "$(dirname "$LOCK_FILE")"
+  if [[ ! -e "$LOCK_FILE" ]]; then
+    : > "$LOCK_FILE"
+    chmod 0666 "$LOCK_FILE"
+  fi
+  exec 9>>"$LOCK_FILE"
+  if ! flock -w "$LOCK_WAIT_SECONDS" 9; then
+    echo "SoNovel is busy with another search, download, or packet job. Please try again shortly." >&2
+    exit 75
+  fi
+}
+
 start_service() {
   service_ctl start
   for _ in $(seq 1 30); do
-    if curl -fsS http://127.0.0.1:7765/version >/dev/null 2>&1; then
+    # SoNovel v1.11.0 exposes /config as its lightweight readiness endpoint.
+    # Older local builds had /version, but relying on it delays every request.
+    if curl -fsS http://127.0.0.1:7765/config >/dev/null 2>&1; then
       return
     fi
     sleep 1
@@ -28,31 +45,33 @@ start_service() {
 command=${1:-}
 case "$command" in
   start)
+    acquire_operation_lock
     start_service
     echo 'SoNovel is ready at http://127.0.0.1:7765'
     ;;
   stop)
+    acquire_operation_lock
     stop_service
     ;;
   status)
     systemctl --no-pager --full status "$SERVICE"
     ;;
-  search|download|packet|list)
+  search|download|download-url|packet|list)
+    acquire_operation_lock
     start_service
+    trap stop_service EXIT
     shift
-    if [[ "$command" == packet ]]; then
-      trap stop_service EXIT
-    fi
     node "$CLIENT" "$command" "$@"
     ;;
   packet-list)
     [[ $# -ge 2 ]] || { echo 'Usage: sonovel.sh packet-list <official-ranking-books.json> [queue options]' >&2; exit 2; }
+    acquire_operation_lock
     start_service
     trap stop_service EXIT
     node /home/admin/ai/scripts/sonovel-ranking-queue.js "${@:2}"
     ;;
   *)
-    echo 'Usage: sonovel.sh start|stop|status|search <keyword>|packet <exact-title> [official-author]|packet-list <ranking.json>|download <exact-title> [author]|list' >&2
+    echo 'Usage: sonovel.sh start|stop|status|search <keyword>|packet <exact-title> [official-author]|packet-list <ranking.json>|download <exact-title> [author] [format]|download-url <title> <author> <source-id> <url> [format]|list' >&2
     exit 2
     ;;
 esac
