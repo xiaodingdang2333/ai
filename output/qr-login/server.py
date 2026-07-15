@@ -818,7 +818,7 @@ def ai_relative(path):
     return str(path.relative_to(FILE_MANAGER_ROOT))
 
 
-def ai_file_rows(rel_path=""):
+def ai_file_rows(rel_path="", page=1, page_size=20, include_all_files=False):
     folder = resolve_ai_path(rel_path)
     if not folder.exists() or not folder.is_dir():
         raise ValueError("Directory not found")
@@ -842,10 +842,21 @@ def ai_file_rows(rel_path=""):
             }
         )
     rows.sort(key=lambda row: (row["type"] != "dir", row["name"].lower()))
+    page_size = max(1, min(int(page_size), 100))
+    total = len(rows)
+    pages = max(1, (total + page_size - 1) // page_size)
+    page = max(1, min(int(page), pages))
+    page_entries = rows[(page - 1) * page_size:page * page_size]
     parent = None
     if folder != FILE_MANAGER_ROOT:
         parent = ai_relative(folder.parent)
-    return {"root": str(FILE_MANAGER_ROOT), "path": ai_relative(folder), "parent": parent, "entries": rows}
+    result = {
+        "root": str(FILE_MANAGER_ROOT), "path": ai_relative(folder), "parent": parent,
+        "entries": page_entries, "total": total, "page": page, "page_size": page_size, "pages": pages,
+    }
+    if include_all_files:
+        result["all_file_paths"] = [row["path"] for row in rows if row["type"] == "file"]
+    return result
 
 
 def read_ai_text(rel_path):
@@ -2761,7 +2772,12 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/ai-files":
             try:
                 params = query_params(self.path)
-                write_json(self, {"ok": True, **ai_file_rows(params.get("path", ""))})
+                write_json(self, {"ok": True, **ai_file_rows(
+                    params.get("path", ""),
+                    page=int(params.get("page", "1")),
+                    page_size=int(params.get("page_size", "20")),
+                    include_all_files=params.get("all_files") == "1",
+                )})
             except Exception as exc:
                 write_json(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
             return
