@@ -67,6 +67,15 @@ package-lock.json
 *.sqlite3-wal
 /runtime/
 
+# local monitor state, disposable virtual environments, and temporary clones
+/monitors/cmb-gold-monitor/state.json
+/monitors/flight-price-ckg-urc-20260815/state.json
+/trade/runs/fund_dca_monitor/state.json
+/trade/runs/ndxtmc_qdii_monitor/state.json
+/trade/runs/renminwang_paper_monitor/state.json
+/tools/novel-downloader-venv/
+/.tmp-chatgpt-novel-production-system-source-firewall/
+
 # reproducible large research data/results
 /trade/runs/dip_rebound_a_share/data/prices/
 /trade/runs/dip_rebound_a_share/results/
