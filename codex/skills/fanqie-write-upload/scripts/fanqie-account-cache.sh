@@ -4,6 +4,7 @@ set -euo pipefail
 WORK_ROOT="${WORK_ROOT:-/home/admin/ai}"
 SNAP_PROFILE="${SNAP_PROFILE:-/root/snap/chromium/common/chromium}"
 BACKUP_DIR="${BACKUP_DIR:-$WORK_ROOT/.fanqie-profiles/snap-backups}"
+ACCOUNT_REGISTRY="${FANQIE_ACCOUNT_REGISTRY:-$WORK_ROOT/output/qr-login/fanqie-upload-accounts.json}"
 LIVE_DIR="${LIVE_DIR:-/root/snap/chromium/common/fanqie-profiles/live}"
 CHROMIUM="${CHROMIUM:-/snap/bin/chromium}"
 LEASE_FILE="${FANQIE_BROWSER_LEASE_FILE:-/run/lock/fanqie-browser-account.lock}"
@@ -13,10 +14,11 @@ usage() {
   cat <<'EOF'
 Usage:
   fanqie-account-cache.sh stop
-  fanqie-account-cache.sh save account-a|account-b|account-c
-  fanqie-account-cache.sh restore account-a|account-b|account-c
-  fanqie-account-cache.sh start account-a|account-b|account-c PORT
-  fanqie-account-cache.sh switch-start account-a|account-b|account-c PORT
+  fanqie-account-cache.sh save ACCOUNT
+  fanqie-account-cache.sh restore ACCOUNT
+  fanqie-account-cache.sh start ACCOUNT PORT
+  fanqie-account-cache.sh switch-start ACCOUNT PORT
+  fanqie-account-cache.sh login-start ACCOUNT PORT
   fanqie-account-cache.sh identify PORT
   fanqie-account-cache.sh with account-a|account-b|account-c PORT COMMAND [ARGS...]
 
@@ -27,19 +29,35 @@ Account map:
 EOF
 }
 
+custom_account_value() {
+  python3 - "$ACCOUNT_REGISTRY" "$1" <<'PY'
+import json, re, sys
+path, account = sys.argv[1:]
+if not re.fullmatch(r'account-[a-z0-9-]{1,32}', account): raise SystemExit(2)
+try:
+    item = json.load(open(path, encoding='utf-8')).get(account, {})
+except Exception:
+    item = {}
+name = str(item.get('expected_name') or '').strip()
+if not name: raise SystemExit(2)
+print(account + '-snap')
+print(name)
+PY
+}
+
 backup_name() {
   case "${1:-}" in
     account-a) printf '%s\n' "account-a-snap" ;;
     account-b) printf '%s\n' "account-b-snap" ;;
     account-c) printf '%s\n' "account-c-snap" ;;
-    *) echo "Unknown account: ${1:-}" >&2; exit 2 ;;
+    *) custom_account_value "$1" | head -n 1 || { echo "Unknown account: ${1:-}" >&2; exit 2; } ;;
   esac
 }
 
 account_dir() {
   case "${1:-}" in
     account-a|account-b|account-c) printf '%s\n' "$LIVE_DIR/$1" ;;
-    *) echo "Unknown account: ${1:-}" >&2; exit 2 ;;
+    *) custom_account_value "$1" >/dev/null || { echo "Unknown account: ${1:-}" >&2; exit 2; }; printf '%s\n' "$LIVE_DIR/$1" ;;
   esac
 }
 
@@ -162,8 +180,20 @@ expected_author() {
     account-a) printf '%s\n' '西大水怪' ;;
     account-b) printf '%s\n' '桃枝醒醒' ;;
     account-c) printf '%s\n' '泡芙软呼呼' ;;
-    *) echo "Unknown account: ${1:-}" >&2; exit 2 ;;
+    *) custom_account_value "$1" | sed -n '2p' || { echo "Unknown account: ${1:-}" >&2; exit 2; } ;;
   esac
+}
+
+login_start() {
+  local account="$1" port="$2" profile
+  profile="$(account_dir "$account")"
+  stop_chrome
+  if [[ ! -d "$profile" && -d "$BACKUP_DIR/$(backup_name "$account")" ]]; then
+    restore_cache "$account"
+  fi
+  mkdir -p "$profile"
+  start_chrome "$account" "$port" >/dev/null
+  wait_for_cdp "$port"
 }
 
 with_browser_lease() {
@@ -262,6 +292,10 @@ case "$cmd" in
     stop_chrome
     restore_cache "$2"
     start_chrome "$2" "$3"
+    ;;
+  login-start)
+    [[ $# -eq 3 ]] || { usage; exit 2; }
+    login_start "$2" "$3"
     ;;
   identify)
     [[ $# -eq 2 ]] || { usage; exit 2; }

@@ -48,6 +48,19 @@ FINANCE_QUOTE_CACHE = ROOT / "finance-quote-cache.json"
 FINANCE_QUOTE_CACHE_LOCK = threading.Lock()
 FINANCE_REFRESH_CODES = ("009052", "022430", "017091", "017093", "019118", "603000", "gold")
 NOVEL_GIT_REPO = Path("/home/admin/chatgpt-novel-production-system")
+FILE_MANAGER_ROOT = NOVEL_GIT_REPO
+FANQIE_UPLOADER = AI_ROOT / "codex" / "skills" / "fanqie-upload" / "scripts" / "fanqie-upload.js"
+FANQIE_CACHE_SCRIPT = Path("/root/.codex/skills/fanqie-write-upload/scripts/fanqie-account-cache.sh")
+FANQIE_UPLOAD_STATE = ROOT / "fanqie-upload-jobs.json"
+FANQIE_ACCOUNT_STATE = ROOT / "fanqie-upload-accounts.json"
+FANQIE_UPLOAD_STAGE = ROOT / "fanqie-upload-staging"
+FANQIE_UPLOAD_LOCK = threading.Lock()
+FANQIE_UPLOAD_STATE_LOCK = threading.RLock()
+FANQIE_DEFAULT_ACCOUNTS = {
+    "account-a": {"label": "西大水怪", "expected_name": "西大水怪", "port": 9223},
+    "account-b": {"label": "桃枝醒醒", "expected_name": "桃枝醒醒", "port": 9224},
+    "account-c": {"label": "泡芙软呼呼", "expected_name": "泡芙软呼呼", "port": 9225},
+}
 NOVEL_DASHBOARD_RECENT_SAMPLE_LIMIT = 3
 SONOVEL_SCRIPT = AI_ROOT / "scripts" / "sonovel.sh"
 SONOVEL_DOWNLOAD_SOURCE = AI_ROOT / "tools" / "so-novel" / "downloads"
@@ -793,16 +806,16 @@ def query_params(path):
 
 def resolve_ai_path(value=""):
     rel = str(value or "").lstrip("/")
-    target = (AI_ROOT / rel).resolve()
-    if target != AI_ROOT and AI_ROOT not in target.parents:
-        raise ValueError("Path escapes AI root")
+    target = (FILE_MANAGER_ROOT / rel).resolve()
+    if target != FILE_MANAGER_ROOT and FILE_MANAGER_ROOT not in target.parents:
+        raise ValueError("Path escapes novel repository root")
     return target
 
 
 def ai_relative(path):
-    if path == AI_ROOT:
+    if path == FILE_MANAGER_ROOT:
         return ""
-    return str(path.relative_to(AI_ROOT))
+    return str(path.relative_to(FILE_MANAGER_ROOT))
 
 
 def ai_file_rows(rel_path=""):
@@ -830,9 +843,9 @@ def ai_file_rows(rel_path=""):
         )
     rows.sort(key=lambda row: (row["type"] != "dir", row["name"].lower()))
     parent = None
-    if folder != AI_ROOT:
+    if folder != FILE_MANAGER_ROOT:
         parent = ai_relative(folder.parent)
-    return {"root": str(AI_ROOT), "path": ai_relative(folder), "parent": parent, "entries": rows}
+    return {"root": str(FILE_MANAGER_ROOT), "path": ai_relative(folder), "parent": parent, "entries": rows}
 
 
 def read_ai_text(rel_path):
@@ -844,6 +857,209 @@ def read_ai_text(rel_path):
     if target.stat().st_size > 5 * 1024 * 1024:
         raise ValueError("File is larger than 5MB")
     return target.read_text(encoding="utf-8")
+
+
+def _atomic_json_write(path, payload):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary.replace(path)
+
+
+def _read_json_file(path, fallback):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return fallback
+
+
+def fanqie_accounts():
+    custom = _read_json_file(FANQIE_ACCOUNT_STATE, {})
+    custom = custom if isinstance(custom, dict) else {}
+    result = {key: dict(value, account=key, builtin=True) for key, value in FANQIE_DEFAULT_ACCOUNTS.items()}
+    for key, value in custom.items():
+        if isinstance(value, dict) and re.fullmatch(r"account-[a-z0-9-]{1,32}", key):
+            result[key] = {"account": key, "builtin": False, **value}
+    return result
+
+
+def fanqie_public_accounts():
+    return [{key: value[key] for key in ("account", "label", "expected_name", "port", "builtin") if key in value}
+            for value in sorted(fanqie_accounts().values(), key=lambda row: row["account"])]
+
+
+def add_fanqie_account(body):
+    alias = str(body.get("alias") or "").strip().lower()
+    expected_name = str(body.get("expected_name") or "").strip()
+    if not re.fullmatch(r"[a-z0-9-]{1,32}", alias):
+        raise ValueError("账号别名只能使用小写字母、数字和连字符")
+    if not expected_name or len(expected_name) > 40:
+        raise ValueError("请填写登录后应显示的番茄笔名")
+    account = f"account-{alias}"
+    existing = fanqie_accounts()
+    if account in existing:
+        raise ValueError("该账号别名已存在")
+    used_ports = {int(item.get("port", 0)) for item in existing.values()}
+    port = next((candidate for candidate in range(9230, 9300) if candidate not in used_ports), None)
+    if port is None:
+        raise RuntimeError("没有可用的本地番茄浏览器端口")
+    custom = _read_json_file(FANQIE_ACCOUNT_STATE, {})
+    custom[account] = {"label": expected_name, "expected_name": expected_name, "port": port}
+    _atomic_json_write(FANQIE_ACCOUNT_STATE, custom)
+    return fanqie_accounts()[account]
+
+
+def _project_for_selected_files(paths):
+    selected = []
+    for raw in paths:
+        target = resolve_ai_path(raw)
+        if not target.is_file() or target.suffix.lower() != ".md":
+            raise ValueError("只能上传 Markdown 正文文件")
+        try:
+            rel = target.relative_to(NOVEL_GIT_REPO)
+        except ValueError:
+            raise ValueError("文件不在生产小说仓库中")
+        parts = rel.parts
+        if len(parts) != 4 or parts[0] != "novels" or parts[2] != "正文" or not re.match(r"^CH(\d+)_.*\.md$", parts[3], re.I):
+            raise ValueError("只允许选择 novels/<书名>/正文/CH章节号_标题.md")
+        selected.append((target, parts[1], int(re.match(r"^CH(\d+)_", parts[3], re.I).group(1))))
+    if not selected:
+        raise ValueError("请至少选择一个正文文件")
+    books = {item[1] for item in selected}
+    if len(books) != 1:
+        raise ValueError("一次上传任务只能包含同一本书的正文")
+    chapters = [item[2] for item in selected]
+    if len(chapters) != len(set(chapters)):
+        raise ValueError("选中的文件包含重复章节号")
+    selected.sort(key=lambda item: item[2])
+    book_dir = NOVEL_GIT_REPO / "novels" / selected[0][1]
+    project_path = book_dir / "00_PROJECT.json"
+    project = _read_json_file(project_path, {})
+    return book_dir, project_path, project if isinstance(project, dict) else {}, selected
+
+
+def _save_project_book_binding(project_path, project, book_id, account):
+    project["fanqie_book_id"] = str(book_id)
+    project["fanqie_account"] = account
+    _atomic_json_write(project_path, project)
+
+
+def fanqie_file_selection_info(paths):
+    book_dir, _project_path, project, selected = _project_for_selected_files(paths)
+    return {
+        "book_name": book_dir.name,
+        "book_id": project.get("fanqie_book_id"),
+        "bound_account": project.get("fanqie_account"),
+        "chapters": [{"path": ai_relative(item[0]), "chapter_no": item[2], "name": item[0].name} for item in selected],
+    }
+
+
+def _load_fanqie_upload_state():
+    payload = _read_json_file(FANQIE_UPLOAD_STATE, {"jobs": []})
+    return payload if isinstance(payload, dict) and isinstance(payload.get("jobs"), list) else {"jobs": []}
+
+
+FANQIE_UPLOAD_DATA = _load_fanqie_upload_state()
+
+
+def _persist_fanqie_upload_state():
+    _atomic_json_write(FANQIE_UPLOAD_STATE, {"jobs": FANQIE_UPLOAD_DATA["jobs"][:80]})
+
+
+def _public_upload_job(job):
+    fields = ("id", "book_name", "book_id", "account", "status", "created_at", "started_at", "finished_at", "total", "success", "failed", "error", "chapters")
+    return {field: job.get(field) for field in fields if field in job}
+
+
+def fanqie_upload_jobs():
+    with FANQIE_UPLOAD_STATE_LOCK:
+        return [_public_upload_job(job) for job in FANQIE_UPLOAD_DATA["jobs"]]
+
+
+def _update_upload_job(job):
+    with FANQIE_UPLOAD_STATE_LOCK:
+        _persist_fanqie_upload_state()
+
+
+def _run_upload_command(args):
+    result = subprocess.run(args, capture_output=True, text=True, timeout=15 * 60)
+    return result.returncode, (result.stdout or "") + ("\n" + result.stderr if result.stderr else "")
+
+
+def _run_fanqie_upload_job(job):
+    with FANQIE_UPLOAD_LOCK:
+        job["status"] = "running"
+        job["started_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+        _update_upload_job(job)
+        account = fanqie_accounts()[job["account"]]
+        stage = FANQIE_UPLOAD_STAGE / job["id"] / "正文"
+        stage.mkdir(parents=True, exist_ok=True)
+        try:
+            for chapter in job["chapters"]:
+                source = resolve_ai_path(chapter["path"])
+                shutil.copy2(source, stage / source.name)
+                chapter["status"] = "running"
+                _update_upload_job(job)
+                base = ["node", str(FANQIE_UPLOADER), "--book", str(stage.parent), "--chapter-dir", "正文", "--book-id", job["book_id"], "--port", str(account["port"]), "--expected-account", account["expected_name"], "--from", str(chapter["chapter_no"]), "--to", str(chapter["chapter_no"]), "--min-chars", "0"]
+                wrapper = [str(FANQIE_CACHE_SCRIPT), "with", job["account"], str(account["port"])]
+                repair_rc, repair_log = _run_upload_command(wrapper + base[:2] + ["repair"] + base[2:])
+                draft_rc, draft_log = _run_upload_command(wrapper + base[:2] + ["drafts"] + base[2:])
+                log = (repair_log + "\n" + draft_log)[-12000:]
+                chapter["log"] = log
+                if "SKIP_PUBLISHED" in log:
+                    chapter.update(status="failed", error="该章节已发布，不能覆盖")
+                elif draft_rc != 0:
+                    chapter.update(status="failed", error=log.splitlines()[-1] if log.strip() else "上传命令失败")
+                else:
+                    chapter.update(status="success", error="")
+                job["success"] = sum(item.get("status") == "success" for item in job["chapters"])
+                job["failed"] = sum(item.get("status") == "failed" for item in job["chapters"])
+                _update_upload_job(job)
+            job["status"] = "completed" if not job["failed"] else "completed_with_errors"
+        except Exception as exc:
+            job["status"] = "failed"
+            job["error"] = str(exc)
+        finally:
+            job["finished_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+            _update_upload_job(job)
+
+
+def start_fanqie_upload_job(body):
+    book_dir, _project_path, project, selected = _project_for_selected_files(body.get("paths") or [])
+    account_name = str(body.get("account") or "")
+    accounts = fanqie_accounts()
+    if account_name not in accounts:
+        raise ValueError("请选择有效的番茄账号")
+    book_id = str(project.get("fanqie_book_id") or "").strip()
+    if not book_id.isdigit():
+        raise ValueError("该作品尚未绑定番茄作品 ID；请先手动填写并保存")
+    job = {
+        "id": uuid.uuid4().hex,
+        "book_name": book_dir.name,
+        "book_id": book_id,
+        "account": account_name,
+        "status": "queued",
+        "created_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "total": len(selected), "success": 0, "failed": 0,
+        "chapters": [{"path": ai_relative(item[0]), "chapter_no": item[2], "name": item[0].name, "status": "queued"} for item in selected],
+    }
+    with FANQIE_UPLOAD_STATE_LOCK:
+        FANQIE_UPLOAD_DATA["jobs"].insert(0, job)
+        _persist_fanqie_upload_state()
+    threading.Thread(target=_run_fanqie_upload_job, args=(job,), name=f"fanqie-upload-{job['id'][:8]}", daemon=True).start()
+    return _public_upload_job(job)
+
+
+def retry_fanqie_upload_job(job_id):
+    with FANQIE_UPLOAD_STATE_LOCK:
+        source = next((job for job in FANQIE_UPLOAD_DATA["jobs"] if job.get("id") == job_id), None)
+        if not source:
+            raise ValueError("找不到上传任务")
+        paths = [item["path"] for item in source.get("chapters", []) if item.get("status") == "failed"]
+        if not paths:
+            raise ValueError("该任务没有可重试的失败章节")
+        account = source.get("account")
+    return start_fanqie_upload_job({"paths": paths, "account": account})
 
 
 INLINE_PREVIEW_TYPES = {
@@ -2549,6 +2765,26 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception as exc:
                 write_json(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
             return
+        if path == "/api/fanqie-upload/jobs":
+            write_json(self, {"ok": True, "jobs": fanqie_upload_jobs()})
+            return
+        if path == "/api/fanqie-upload/accounts":
+            write_json(self, {"ok": True, "accounts": fanqie_public_accounts()})
+            return
+        if path == "/api/fanqie-upload/login-status":
+            try:
+                params = query_params(self.path)
+                account = fanqie_accounts().get(str(params.get("account") or ""))
+                if not account:
+                    raise ValueError("未知账号")
+                result = subprocess.run([str(FANQIE_CACHE_SCRIPT), "identify", str(account["port"])], capture_output=True, text=True, timeout=40)
+                identity = (result.stdout or "").strip().splitlines()[-1] if result.returncode == 0 and (result.stdout or "").strip() else "LOGIN_REQUIRED"
+                if identity == account["expected_name"]:
+                    subprocess.run([str(FANQIE_CACHE_SCRIPT), "save", str(params.get("account"))], check=True, capture_output=True, text=True, timeout=45)
+                write_json(self, {"ok": True, "identity": identity, "verified": identity == account["expected_name"]})
+            except Exception as exc:
+                write_json(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
         if path == "/api/ai-file-content":
             try:
                 params = query_params(self.path)
@@ -2775,6 +3011,67 @@ class Handler(SimpleHTTPRequestHandler):
                         shutil.copyfileobj(field.file, out)
                     saved.append({"name": target.name, "path": ai_relative(target), "size": target.stat().st_size})
                 write_json(self, {"ok": True, "saved": saved})
+            except Exception as exc:
+                write_json(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+
+        if path == "/api/fanqie-upload/selection":
+            try:
+                body = read_json_body(self)
+                write_json(self, {"ok": True, "selection": fanqie_file_selection_info(body.get("paths") or [])})
+            except Exception as exc:
+                write_json(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+
+        if path == "/api/fanqie-upload/bind":
+            try:
+                body = read_json_body(self)
+                book_dir, project_path, project, _selected = _project_for_selected_files(body.get("paths") or [])
+                book_id = str(body.get("book_id") or "").strip()
+                account = str(body.get("account") or "").strip()
+                if not book_id.isdigit():
+                    raise ValueError("作品 ID 必须为数字")
+                if account not in fanqie_accounts():
+                    raise ValueError("请选择有效的番茄账号")
+                _save_project_book_binding(project_path, project, book_id, account)
+                write_json(self, {"ok": True, "book_name": book_dir.name, "book_id": book_id, "account": account})
+            except Exception as exc:
+                write_json(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+
+        if path == "/api/fanqie-upload/start":
+            try:
+                body = read_json_body(self)
+                write_json(self, {"ok": True, "job": start_fanqie_upload_job(body)}, HTTPStatus.ACCEPTED)
+            except Exception as exc:
+                write_json(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+
+        if path == "/api/fanqie-upload/retry":
+            try:
+                body = read_json_body(self)
+                write_json(self, {"ok": True, "job": retry_fanqie_upload_job(str(body.get("job_id") or ""))}, HTTPStatus.ACCEPTED)
+            except Exception as exc:
+                write_json(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+
+        if path == "/api/fanqie-upload/accounts":
+            try:
+                account = add_fanqie_account(read_json_body(self))
+                write_json(self, {"ok": True, "account": account})
+            except Exception as exc:
+                write_json(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+
+        if path == "/api/fanqie-upload/login-start":
+            try:
+                body = read_json_body(self)
+                account_name = str(body.get("account") or "")
+                account = fanqie_accounts().get(account_name)
+                if not account:
+                    raise ValueError("请选择有效账号")
+                subprocess.run([str(FANQIE_CACHE_SCRIPT), "login-start", account_name, str(account["port"])], check=True, capture_output=True, text=True, timeout=45)
+                write_json(self, {"ok": True, "message": "浏览器已启动，请扫描右侧二维码；扫描后会自动核验笔名并保存缓存。"})
             except Exception as exc:
                 write_json(self, {"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
             return

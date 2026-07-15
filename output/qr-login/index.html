@@ -687,6 +687,25 @@
           <div class="status" id="fmStatus"></div>
         </div>
         <div>
+          <section class="sample-queue" aria-labelledby="fanqieUploadTitle">
+            <div class="sample-queue-head">
+              <div><h3 id="fanqieUploadTitle">番茄草稿上传</h3><p>仅支持同一本书正文目录的 <code>CH章节号_标题.md</code>。后台串行上传，不阻塞页面。</p></div>
+            </div>
+            <div class="control-grid">
+              <label>账号<select id="fanqieAccount"></select></label>
+              <label>新增账号别名<input id="fanqieNewAlias" placeholder="例如 new-author"></label>
+              <label>登录后笔名<input id="fanqieNewName" placeholder="用于扫码后核验"></label>
+              <button id="fanqieAddAccountBtn" type="button" class="secondary">新增账号配置</button>
+            </div>
+            <div class="control-grid" style="margin-top:8px">
+              <label>未识别时手填作品 ID<input id="fanqieBookId" inputmode="numeric" placeholder="仅首次绑定需要"></label>
+              <button id="fanqieBindBtn" type="button" class="secondary">保存作品绑定</button>
+              <button id="fanqieUploadBtn" type="button">上传选中正文到草稿箱</button>
+              <button id="fanqieLoginBtn" type="button" class="secondary">扫码登录/恢复账号</button>
+            </div>
+            <div class="status" id="fanqieUploadStatus">先在文件管理器进入正文目录并勾选章节。</div>
+            <div class="sample-job-list" id="fanqieUploadJobs"></div>
+          </section>
           <div class="task-group" id="novelTasks"></div>
           <div style="height:14px"></div>
           <h3>番茄扫码登录</h3>
@@ -775,6 +794,16 @@
     const fmDownloadBtn = $('fmDownloadBtn');
     const fmSelectAllBtn = $('fmSelectAllBtn');
     const fmFileInput = $('fmFileInput');
+    const fanqieAccount = $('fanqieAccount');
+    const fanqieNewAlias = $('fanqieNewAlias');
+    const fanqieNewName = $('fanqieNewName');
+    const fanqieAddAccountBtn = $('fanqieAddAccountBtn');
+    const fanqieBookId = $('fanqieBookId');
+    const fanqieBindBtn = $('fanqieBindBtn');
+    const fanqieUploadBtn = $('fanqieUploadBtn');
+    const fanqieLoginBtn = $('fanqieLoginBtn');
+    const fanqieUploadStatus = $('fanqieUploadStatus');
+    const fanqieUploadJobs = $('fanqieUploadJobs');
     const clockVideo = $('clockVideo');
     const clockStart = $('clockStart');
     const clockEnd = $('clockEnd');
@@ -807,6 +836,7 @@
     let sonovelSearchResults = [];
     let sonovelActiveJobId = '';
     let sonovelPoll = null;
+    let fanqieUploadPoll = null;
     const sonovelAutoDownloadedJobs = new Set();
     const SLEEP_AFTER_MS = 5 * 60 * 1000;
     const SLEEP_PASSWORD = 'xiaodingdang';
@@ -1575,7 +1605,7 @@
       return copied ? Promise.resolve() : Promise.reject(new Error('浏览器不支持自动复制'));
     }
     function fmRenderBreadcrumb() {
-      if (!fmCurrentPath) { fmBreadcrumb.innerHTML = '<span>/ AI 根目录</span>'; return; }
+      if (!fmCurrentPath) { fmBreadcrumb.innerHTML = '<span>/ chatgpt-novel-production-system</span>'; return; }
       const parts = fmCurrentPath.split('/');
       let acc = '';
       let html = '<a href="#" data-nav="">/</a>';
@@ -1713,6 +1743,84 @@
       await fmLoad(fmCurrentPath);
     });
 
+    async function fanqieApi(path, body, method = 'POST') {
+      const res = await fetch(path, { method, headers: method === 'POST' ? { 'Content-Type': 'application/json' } : undefined, body: method === 'POST' ? JSON.stringify(body || {}) : undefined });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      return data;
+    }
+    async function loadFanqieAccounts() {
+      const data = await fanqieApi('api/fanqie-upload/accounts', null, 'GET');
+      const selected = fanqieAccount.value;
+      fanqieAccount.innerHTML = (data.accounts || []).map(account => `<option value="${escapeHtml(account.account)}">${escapeHtml(account.label || account.expected_name)}（${escapeHtml(account.account)}）</option>`).join('');
+      if ([...fanqieAccount.options].some(option => option.value === selected)) fanqieAccount.value = selected;
+    }
+    function renderFanqieJobs(jobs) {
+      if (!jobs?.length) { fanqieUploadJobs.innerHTML = '<p class="muted">暂无上传任务。</p>'; return; }
+      fanqieUploadJobs.innerHTML = jobs.slice(0, 12).map(job => {
+        const chapters = (job.chapters || []).map(ch => `<li>CH${String(ch.chapter_no).padStart(3, '0')} ${escapeHtml(ch.name || '')}：${escapeHtml(ch.status || '')}${ch.error ? ` · ${escapeHtml(ch.error)}` : ''}</li>`).join('');
+        return `<article class="sample-job"><div class="sample-job-main"><strong>${escapeHtml(job.book_name)} · ${escapeHtml(job.status)}</strong><span>${job.success || 0}/${job.total || 0} 成功，${job.failed || 0} 失败</span></div><div class="sample-job-meta">账号：${escapeHtml(job.account)} · ${escapeHtml(job.created_at || '')}${job.error ? ` · ${escapeHtml(job.error)}` : ''}</div>${job.failed ? `<button type="button" class="secondary" data-fanqie-retry="${escapeHtml(job.id)}">重试失败章节</button>` : ''}<details><summary>任务详情</summary><ul>${chapters}</ul></details></article>`;
+      }).join('');
+    }
+    async function loadFanqieJobs() {
+      try { const data = await fanqieApi('api/fanqie-upload/jobs', null, 'GET'); renderFanqieJobs(data.jobs); } catch (error) { fanqieUploadStatus.textContent = `读取上传任务失败：${error.message}`; }
+    }
+    async function selectedFanqieInfo() {
+      if (!fmSelected.size) throw new Error('请先在同一本书的正文目录勾选章节');
+      const data = await fanqieApi('api/fanqie-upload/selection', { paths: [...fmSelected] });
+      const info = data.selection;
+      fanqieBookId.value = info.book_id || '';
+      fanqieUploadStatus.textContent = `已选择《${info.book_name}》${info.chapters.length} 章：${info.chapters.map(ch => `CH${String(ch.chapter_no).padStart(3, '0')}`).join('、')}`;
+      if (info.bound_account && [...fanqieAccount.options].some(option => option.value === info.bound_account)) fanqieAccount.value = info.bound_account;
+      return info;
+    }
+    fanqieAddAccountBtn.addEventListener('click', async () => {
+      try {
+        const data = await fanqieApi('api/fanqie-upload/accounts', { alias: fanqieNewAlias.value, expected_name: fanqieNewName.value });
+        await loadFanqieAccounts(); fanqieAccount.value = data.account.account;
+        fanqieUploadStatus.textContent = `已新增 ${data.account.expected_name}。请用右侧二维码完成番茄登录后再上传。`;
+      } catch (error) { fanqieUploadStatus.textContent = `新增账号失败：${error.message}`; }
+    });
+    fanqieBindBtn.addEventListener('click', async () => {
+      try {
+        await selectedFanqieInfo();
+        const data = await fanqieApi('api/fanqie-upload/bind', { paths: [...fmSelected], book_id: fanqieBookId.value, account: fanqieAccount.value });
+        fanqieUploadStatus.textContent = `已保存《${data.book_name}》→ 作品 ${data.book_id} 的账号绑定。`;
+      } catch (error) { fanqieUploadStatus.textContent = `保存绑定失败：${error.message}`; }
+    });
+    fanqieUploadBtn.addEventListener('click', async () => {
+      try {
+        const info = await selectedFanqieInfo();
+        if (!info.book_id) throw new Error('该书未绑定作品 ID，请填写后点击“保存作品绑定”');
+        const data = await fanqieApi('api/fanqie-upload/start', { paths: [...fmSelected], account: fanqieAccount.value });
+        fanqieUploadStatus.textContent = `已创建上传任务：${data.job.total} 章，后台正在串行处理。`;
+        await loadFanqieJobs();
+      } catch (error) { fanqieUploadStatus.textContent = `无法创建上传任务：${error.message}`; }
+    });
+    fanqieLoginBtn.addEventListener('click', async () => {
+      try {
+        await fanqieApi('api/fanqie-upload/login-start', { account: fanqieAccount.value });
+        fanqieUploadStatus.textContent = '请扫描右侧二维码；页面将自动核验笔名并保存登录缓存。';
+        const timer = setInterval(async () => {
+          try {
+            const data = await fanqieApi(`api/fanqie-upload/login-status?account=${encodeURIComponent(fanqieAccount.value)}`, null, 'GET');
+            if (data.verified) { clearInterval(timer); fanqieUploadStatus.textContent = `账号已验证：${data.identity}`; }
+            else fanqieUploadStatus.textContent = `等待扫码登录：${data.identity || 'LOGIN_REQUIRED'}`;
+          } catch (_) {}
+        }, 3000);
+      } catch (error) { fanqieUploadStatus.textContent = `启动扫码登录失败：${error.message}`; }
+    });
+    fanqieUploadJobs.addEventListener('click', async event => {
+      const button = event.target.closest('[data-fanqie-retry]');
+      if (!button) return;
+      button.disabled = true;
+      try {
+        const data = await fanqieApi('api/fanqie-upload/retry', { job_id: button.dataset.fanqieRetry });
+        fanqieUploadStatus.textContent = `已重新创建失败章节任务：${data.job.total} 章。`;
+        await loadFanqieJobs();
+      } catch (error) { fanqieUploadStatus.textContent = `重试失败：${error.message}`; button.disabled = false; }
+    });
+
     function setClockLinks(state) {
       const outputs = state?.outputs || {};
       const stamp = Date.now();
@@ -1782,6 +1890,9 @@
     loadPortfolio();
     loadScheduledTasks().catch(error => { financeTasks.innerHTML = `<div class="status">任务读取失败：${escapeHtml(error.message)}</div>`; });
     fmLoad('');
+    loadFanqieAccounts().catch(error => { fanqieUploadStatus.textContent = `账号读取失败：${error.message}`; });
+    loadFanqieJobs();
+    fanqieUploadPoll = setInterval(() => { if (!document.hidden) loadFanqieJobs(); }, 2000);
     loadNovelSampleJobs();
     novelSamplePoll = setInterval(() => {
       if (!document.hidden) loadNovelSampleJobs();
