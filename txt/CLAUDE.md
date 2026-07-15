@@ -278,3 +278,4 @@ Do not commit `gen_avatar.py` unless it no longer contains secrets and you inten
 - 2026-07-13: 旧`novel-actions.service`（8091网页 Action 后端）已停止并禁用；新Git流程和8090页面不依赖它。仅保留历史文件，未经用户明确要求不得重新启用。
 - 2026-07-14: 2.2-LTS 启用 `SOURCE_CONTAMINATION_FIREWALL`。新书 CH001 前必须做公开撞题检索并建立来源基线；实际拆书来源和高风险撞题书分别以 `USED_CREATIVE_SOURCE`、`EXTERNAL_COLLISION_WATCHLIST` 登记，只吸收功能结论，不得把来源正文、专名、承重关系或连续事件链注入生成。每个 READY/草稿上传范围都须有 exact-current-blob 绑定的逐来源审计；专名复用、关系加开篇链复用、授权材料长句复用、撞题搜索或回执缺失/过期均硬阻断。旧书下一次写作、修订、READY 或上传前必须补真实审计；旧 `formal/CHxxx` 只读适配器仅能诊断，不能放行上传。该规则降低风险，不保证平台绝不误判。
 - 2026-07-14: Git 样本获取默认使用关键章节 Packet：前5/中2/后2，单书章节并发默认6（上限12）；需要多个有效样本时最多两本候选并行，达到目标即停止。结果必须记录适配器、耗时、章节包规模与并发，8090 Packet 面板展示这些指标。`novel-downloader` 仅为隔离基准候选，未经授权来源的身份/质量/恢复/速度对比不得进入生产路由；原始受版权正文不可提交 Git。
+- 2026-07-15: AI 工作区同步时，实时监控 `state.json`、临时克隆和可重建虚拟环境必须在 `.gitignore` 中排除，并用 `git rm --cached` 停止跟踪已入库的运行状态；保留本机文件。否则后台监控会在同步后立刻重写状态并持续制造脏工作树。
