@@ -1818,8 +1818,10 @@
     });
     fanqieBindBtn.addEventListener('click', async () => {
       try {
+        const bookId = fanqieBookId.value.trim();
         await selectedFanqieInfo();
-        const data = await fanqieApi('api/fanqie-upload/bind', { paths: [...fmSelected], book_id: fanqieBookId.value, account: fanqieAccount.value });
+        fanqieBookId.value = bookId;
+        const data = await fanqieApi('api/fanqie-upload/bind', { paths: [...fmSelected], book_id: bookId, account: fanqieAccount.value });
         fanqieUploadStatus.textContent = `已保存《${data.book_name}》→ 作品 ${data.book_id} 的账号绑定。`;
       } catch (error) { fanqieUploadStatus.textContent = `保存绑定失败：${error.message}`; }
     });
