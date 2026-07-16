@@ -1,0 +1,30 @@
+name: remove-migrated-qiling-audio-appraisal
+
+on:
+  push:
+    paths:
+      - '.github/workflows/remove-migrated-qiling-audio-appraisal.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  remove-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Remove migrated source project
+        shell: bash
+        run: |
+          set -euo pipefail
+          target='txt/七零听声鉴宝：她靠收破烂掀翻全厂'
+          test -d "$target"
+          rm -rf "$target"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A -- "$target"
+          git commit -m 'remove migrated 七零听声鉴宝 from ai repository'
+          git push
