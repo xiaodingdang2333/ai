@@ -13,6 +13,7 @@ This worker is deliberately conservative:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -40,6 +41,7 @@ ALLOWED_BASES = {
 RUNNING_LEASE_SECONDS = 15 * 60
 DEFAULT_BOOK_CONCURRENCY = 2
 DEFAULT_PACKET_CHAPTER_CONCURRENCY = 6
+FULL_TEXT_ROOT = Path("/home/admin/ai/txt/download")
 
 
 def now_iso() -> str:
@@ -136,8 +138,10 @@ def packet_scope_for(request: dict[str, Any]) -> dict[str, int | str]:
     optional to retain compatibility with existing Git requests.
     """
     scope = str(request.get("material_scope") or "key_chapter_packet")
+    if scope == "full_authorized_text":
+        return {"scope": scope, "front": 0, "middle": 0, "tail": 0, "chapter_concurrency": 1}
     if scope != "key_chapter_packet":
-        raise ValueError("only key_chapter_packet is supported by the automatic worker")
+        raise ValueError(f"unsupported material_scope: {scope}")
     return {
         "scope": scope,
         "front": min(8, positive_int(request.get("packet_front_chapters"), 5)),
@@ -179,6 +183,113 @@ def run_packet(book: dict[str, Any], timeout_seconds: int, packet_scope: dict[st
     if result.returncode == 0:
         return True, output
     return False, error or output or f"packet command failed with exit {result.returncode}"
+
+
+def run_full_download(book: dict[str, Any], timeout_seconds: int) -> tuple[bool, dict[str, Any] | str]:
+    """Download an authorized whole book locally; Git never receives its body."""
+    command = [str(NODE_BIN), str(SONOVEL_CLIENT), "download", str(book.get("title") or ""), str(book.get("author") or ""), "txt"]
+    try:
+        result = subprocess.run(command, check=False, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=max(timeout_seconds, 600))
+    except subprocess.TimeoutExpired:
+        return False, f"full-text download timed out after {max(timeout_seconds, 600)}s"
+    if result.returncode != 0:
+        return False, (result.stderr or result.stdout or "full-text download failed").strip()[-1500:]
+    try:
+        payload = json.loads((result.stdout or "").strip())
+    except json.JSONDecodeError:
+        return False, f"full-text downloader returned invalid JSON: {(result.stdout or '')[-500:]}"
+    selected = payload.get("selected") if isinstance(payload.get("selected"), dict) else {}
+    if selected.get("bookName") != book.get("title") or selected.get("author") != book.get("author"):
+        return False, "FULL_TEXT_IDENTITY_MISMATCH: downloader did not return the requested exact title and author"
+    file_info = payload.get("file") if isinstance(payload.get("file"), dict) else {}
+    name = str(file_info.get("name") or "")
+    local_path = FULL_TEXT_ROOT / name
+    if not name or not local_path.exists():
+        return False, f"full-text downloader did not create expected local file: {name or 'unknown'}"
+    return True, {"path": local_path, "selected": selected, "file": file_info}
+
+
+def _read_local_full_text(path: Path) -> tuple[str, list[tuple[str, str]]]:
+    files = sorted(path.rglob("*.txt")) if path.is_dir() else [path]
+    chunks: list[str] = []
+    rows: list[tuple[str, str]] = []
+    for file_path in files:
+        try:
+            text = file_path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        if text.strip():
+            chunks.append(text)
+            rows.append((file_path.name, text))
+    return "\n".join(chunks), rows
+
+
+def audit_full_authorized_text(download: dict[str, Any], book: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Create an index/audit from server-local full text without exporting prose."""
+    path = Path(download["path"])
+    text, file_rows = _read_local_full_text(path)
+    chapter_rows: list[dict[str, Any]] = []
+    heading = re.compile(r"(?m)^\s*(第\s*(\d+)\s*章[^\n]{0,100})")
+    for _filename, file_text in file_rows:
+        matches = list(heading.finditer(file_text))
+        for index, match in enumerate(matches):
+            end = matches[index + 1].start() if index + 1 < len(matches) else len(file_text)
+            chapter_rows.append({"chapter_no": int(match.group(2)), "title": match.group(1).strip(), "characters": len(re.sub(r"\s+", "", file_text[match.start():end]))})
+    if not chapter_rows and path.is_dir():
+        for index, (filename, file_text) in enumerate(file_rows, 1):
+            match = re.search(r"(?:^|_)0*(\d+)_", filename)
+            chapter_rows.append({"chapter_no": int(match.group(1)) if match else index, "title": Path(filename).stem[:120], "characters": len(re.sub(r"\s+", "", file_text))})
+    numbers = [row["chapter_no"] for row in chapter_rows]
+    duplicate_count = len(numbers) - len(set(numbers))
+    disorder_count = sum(1 for left, right in zip(numbers, numbers[1:]) if right <= left)
+    total_characters = len(re.sub(r"\s+", "", text))
+    reasons: list[str] = []
+    if total_characters < 10000:
+        reasons.append(f"full text too short: {total_characters} characters")
+    if len(chapter_rows) < 3:
+        reasons.append(f"too few indexed chapters: {len(chapter_rows)}")
+    if duplicate_count:
+        reasons.append(f"duplicate chapter numbers: {duplicate_count}")
+    if disorder_count:
+        reasons.append(f"chapter order disorder: {disorder_count}")
+    audit = {
+        "schema_version": "1.0",
+        "audit_kind": "full_authorized_text_quality",
+        "title": book.get("title"),
+        "author": book.get("author"),
+        "material_scope": "full_authorized_text",
+        "storage": "server_local_only",
+        "source_ref": {"url": download["selected"].get("url"), "source_id": download["selected"].get("sourceId")},
+        "content_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        "total_characters": total_characters,
+        "indexed_chapter_count": len(chapter_rows),
+        "duplicate_chapter_number_count": duplicate_count,
+        "chapter_order_disorder_count": disorder_count,
+        "passed": not reasons,
+        "reasons": reasons,
+    }
+    return audit, chapter_rows
+
+
+def run_full_text_teardown(repo: Path, request: dict[str, Any], result_dir: Path, audit_path: Path, index_path: Path, local_path: Path, timeout_seconds: int) -> tuple[bool, str, Path | None]:
+    output_path = result_dir / "teardowns" / "FULL_AUTHORIZED_TEXT_TEARDOWN.md"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    prompt = (
+        "你是中文网文市场拆书分析助手。用户已授权处理服务器本地完整文本。读取完整文本与其Git内的章节索引/质量审计，"
+        "仅输出功能结构化拆书：生命周期、章节节奏、钩子、人物与关系引擎、升级/兑现机制、风险与非复制启发。"
+        "不得引用或复述原文，不得复用专名、标志性事件或连续情节。\n\n"
+        f"本地完整文本（不得提交）：{local_path}\n"
+        f"质量审计：{audit_path.relative_to(repo)}\n章节索引：{index_path.relative_to(repo)}\n"
+        "输出中文 Markdown。"
+    )
+    command = [str(CODEX_BIN), "exec", "--cd", str(repo), "--sandbox", "read-only", "--add-dir", str(local_path.parent), "--output-last-message", str(output_path), prompt]
+    try:
+        result = subprocess.run(command, check=False, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        return False, f"full-text Codex teardown timed out after {timeout_seconds}s", None
+    if result.returncode == 0 and output_path.exists() and output_path.stat().st_size > 200:
+        return True, str(output_path.relative_to(repo)), output_path
+    return False, ((result.stderr or "") + "\n" + (result.stdout or "")).strip()[-2000:], None
 
 
 NON_STORY_CHAPTER_TITLE = re.compile(
@@ -337,8 +448,6 @@ def run_codex_teardown(repo: Path, request: dict[str, Any], result_dir: Path, pa
         str(repo),
         "--sandbox",
         "read-only",
-        "--ask-for-approval",
-        "never",
         "--output-last-message",
         str(output_path),
         prompt,
@@ -446,6 +555,7 @@ def status_for_request(
     books = all_books[:max_attempts]
     status_books: list[dict[str, Any]] = []
     packet_paths: list[Path] = []
+    full_teardown_paths: list[Path] = []
     effective = 0
 
     packet_scope = packet_scope_for(request)
@@ -460,7 +570,7 @@ def status_for_request(
             "author": author,
             "legal_access_status": basis,
             "identity_confidence": book.get("identity_confidence", "unknown"),
-            "provider": "sonovel_key_chapter_packet",
+            "provider": "sonovel_key_chapter_packet" if packet_scope["scope"] == "key_chapter_packet" else "sonovel_full_authorized_text",
             "material_scope": packet_scope["scope"],
         }
         if requested_provider not in {"auto", "sonovel_key_chapter_packet"}:
@@ -485,9 +595,32 @@ def status_for_request(
                 **base_record,
                 "acquisition_status": "pending",
                 "quality_status": "unchecked",
-                "failure_reason": "dry-run: packet command not executed",
+                "failure_reason": f"dry-run: {packet_scope['scope']} acquisition not executed",
             }, None)
         started_at = time.monotonic()
+        if packet_scope["scope"] == "full_authorized_text":
+            ok, outcome = run_full_download(book, timeout_seconds)
+            elapsed_seconds = round(time.monotonic() - started_at, 2)
+            if not ok:
+                return ({**base_record, "acquisition_status": "failed", "quality_status": "failed", "failure_reason": str(outcome)[:1000], "performance": {"elapsed_seconds": elapsed_seconds}}, None)
+            download = outcome
+            audit, chapter_rows = audit_full_authorized_text(download, book)
+            audit_dir = result_dir / "full-text-audits"
+            audit_dir.mkdir(parents=True, exist_ok=True)
+            stem = f"{index:03d}_{safe_slug(title, 'book')}"
+            audit_path = audit_dir / f"{stem}.quality.json"
+            index_path = audit_dir / f"{stem}.chapter-index.json"
+            write_json(audit_path, audit)
+            write_json(index_path, {"schema_version": "1.0", "title": title, "author": author, "material_scope": "full_authorized_text", "storage": "server_local_only", "chapters": chapter_rows})
+            if not audit["passed"]:
+                return ({**base_record, "acquisition_status": "failed", "quality_status": "quality_rejected", "failure_reason": "FULL_TEXT_QUALITY_AUDIT: " + "; ".join(audit["reasons"]), "source_quality_audit": audit, "performance": {"elapsed_seconds": elapsed_seconds, "selected_chapter_count": len(chapter_rows), "chapter_concurrency": 1}}, None)
+            if not run_codex:
+                return ({**base_record, "acquisition_status": "downloaded", "quality_status": "failed", "failure_reason": "FULL_TEXT_TEARDOWN_REQUIRED: rerun with --run-codex; no packet downgrade is allowed", "source_quality_audit": audit, "performance": {"elapsed_seconds": elapsed_seconds, "selected_chapter_count": len(chapter_rows), "chapter_concurrency": 1}}, None)
+            teardown_ok, teardown_detail, teardown_path = run_full_text_teardown(repo, request, result_dir, audit_path, index_path, Path(download["path"]), codex_timeout_seconds)
+            if not teardown_ok:
+                return ({**base_record, "acquisition_status": "downloaded", "quality_status": "failed", "failure_reason": "FULL_TEXT_TEARDOWN_FAILED: " + teardown_detail[:1000], "source_quality_audit": audit, "performance": {"elapsed_seconds": elapsed_seconds, "selected_chapter_count": len(chapter_rows), "chapter_concurrency": 1}}, None)
+            full_teardown_paths.append(teardown_path)
+            return ({**base_record, "acquisition_status": "teardown_ready", "quality_status": "effective", "teardown_path": teardown_detail, "packet_git_push_status": "pending", "source_quality_audit": audit, "performance": {"elapsed_seconds": elapsed_seconds, "selected_chapter_count": len(chapter_rows), "chapter_concurrency": 1}}, teardown_path)
         ok, output = run_packet(book, timeout_seconds, packet_scope)
         elapsed_seconds = round(time.monotonic() - started_at, 2)
         if not ok:
@@ -533,7 +666,10 @@ def status_for_request(
     cursor = 0
     while cursor < len(books) and effective < min_effective:
         remaining = min_effective - effective
-        batch_size = min(DEFAULT_BOOK_CONCURRENCY, remaining, len(books) - cursor)
+        # Directional children are strict ordered fallbacks: never start the
+        # second book until the first one is conclusively rejected.
+        batch_limit = 1 if request.get("parent_request_id") else DEFAULT_BOOK_CONCURRENCY
+        batch_size = min(batch_limit, remaining, len(books) - cursor)
         batch = [(cursor + offset + 1, books[cursor + offset]) for offset in range(batch_size)
                  if isinstance(books[cursor + offset], dict)]
         cursor += batch_size
@@ -557,7 +693,7 @@ def status_for_request(
                 repo, request_path, request,
                 progress_payload(
                     request, request_path, repo, "acquiring_sample_batch",
-                    f"Attempting {len(batch)} candidate(s) concurrently; target is {min_effective} effective packet(s).",
+                    f"Attempting {len(batch)} candidate(s) in required order; target is {min_effective} effective result(s).",
                     [*status_books, *pending], batch[0][0],
                     {"title": str(batch[0][1].get("title") or ""), "author": str(batch[0][1].get("author") or ""), "channel": batch[0][1].get("channel")},
                 ), git_commit, git_push, f"samples: started batch {request_id} {batch[0][0]}",
@@ -632,7 +768,11 @@ def status_for_request(
         "dry_run": not execute,
     }
 
-    if request.get("analysis_engine") == "server_codex" and request.get("allow_codex") is True:
+    if packet_scope["scope"] == "full_authorized_text":
+        result["teardown_dir"] = str((result_dir / "teardowns").relative_to(repo))
+        result["full_text_audit_dir"] = str((result_dir / "full-text-audits").relative_to(repo))
+        result["server_codex_deep_teardown"] = {"requested": True, "status": "completed" if effective else "failed", "scope": "full_authorized_text", "teardown_paths": [str(path.relative_to(repo)) for path in full_teardown_paths]}
+    elif request.get("analysis_engine") == "server_codex" and request.get("allow_codex") is True:
         codex_status = "todo_after_packet_ready" if effective else "blocked_no_effective_packet"
         codex_teardown_path = None
         codex_error = None
@@ -679,6 +819,7 @@ def running_status_for_request(request: dict[str, Any], request_path: Path, repo
     books = request.get("books") if isinstance(request.get("books"), list) else []
     min_effective = positive_int(request.get("min_effective_samples"), 1)
     max_attempts = positive_int(request.get("max_attempts"), max(min_effective * 5, len(books) or 1))
+    scope = str(request.get("material_scope") or "key_chapter_packet")
     status_books = []
     for book in books[:max_attempts]:
         if not isinstance(book, dict):
@@ -690,7 +831,8 @@ def running_status_for_request(request: dict[str, Any], request_path: Path, repo
             "legal_access_status": basis,
             "automation_allowed": automation_allowed,
             "identity_confidence": book.get("identity_confidence", "unknown"),
-            "acquisition_status": "queued_for_packet",
+            "material_scope": scope,
+            "acquisition_status": "pending",
             "quality_status": "unchecked",
         })
     payload = progress_payload(
@@ -698,7 +840,7 @@ def running_status_for_request(request: dict[str, Any], request_path: Path, repo
         request_path,
         repo,
         "server_sample_worker_started",
-        "Server worker has claimed this request and is attempting legal packet acquisition.",
+        f"Server worker has claimed this request and is attempting legal {scope} acquisition.",
         status_books,
     )
     payload["request_id"] = request_id
