@@ -1,0 +1,34 @@
+{
+  "book_id": "fanqie-7654615479075490878",
+  "book_title": "重生六岁，我带空间抢回军区大院",
+  "workflow_version": "2.2-LTS",
+  "fanqie_account": "account-b",
+  "expected_author_name": "桃枝醒醒",
+  "fanqie_book_id": "7654615479075490878",
+  "ai_use": "yes",
+  "auto_upload_to_drafts": false,
+  "upload_status": "ready_for_draft_upload",
+  "upload_range": {
+    "from_chapter": 1,
+    "to_chapter": 74
+  },
+  "binding_evidence": {
+    "publication_info_path": "txt/重生六岁，我带空间抢回军区大院/作品信息_番茄上传.md",
+    "publication_info_blob_sha": "3b8d6cfb4b97aeea6b85fd9f91abd957f4e71c08",
+    "account_mapping_source_path": "scripts/novel-git-upload-worker.py",
+    "account_mapping_source_blob_sha": "0e01cb3418d0b0f47041624e37a3317c3a9f74dd",
+    "account_mapping": "account-b -> 桃枝醒醒",
+    "automatic_upload_intentionally_disabled": true
+  },
+  "ready_evidence": {
+    "qa_passed": true,
+    "current_blob_validated": true,
+    "human_review_required": false,
+    "human_review_status": "not_required",
+    "p0_manifest": "txt/重生六岁，我带空间抢回军区大院/追踪/机器门禁/P0_DIALOGUE_VISUAL_CH001_CH074.json",
+    "length_manifest": "txt/重生六岁，我带空间抢回军区大院/追踪/机器门禁/CHAPTER_LENGTH_GATE_CH001_CH074.json",
+    "ready_manifest": "txt/重生六岁，我带空间抢回军区大院/追踪/机器门禁/READY_PROMOTION_CH001_CH074.json",
+    "final_blob_manifest": "txt/重生六岁，我带空间抢回军区大院/追踪/机器门禁/FINAL_BLOB_VALIDATION_CH001_CH074.json",
+    "platform_ready_manifest": "txt/重生六岁，我带空间抢回军区大院/追踪/机器门禁/PLATFORM_READY_CH001_CH074.json"
+  }
+}

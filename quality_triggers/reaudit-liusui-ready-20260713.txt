@@ -1,0 +1,4 @@
+book=重生六岁，我带空间抢回军区大院
+range=CH001-CH074
+mode=RUN_P0_LENGTH_FINAL_BLOB_READY
+requested_at=2026-07-13

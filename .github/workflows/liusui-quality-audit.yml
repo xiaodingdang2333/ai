@@ -1,0 +1,235 @@
+name: liusui-quality-audit
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run current-blob P0 and length diagnostics
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from __future__ import annotations
+          import hashlib, json, math, re, statistics, subprocess
+          from pathlib import Path
+
+          ROOT = Path.cwd()
+          BOOK = ROOT / 'txt/重生六岁，我带空间抢回军区大院'
+          FORMAL = BOOK / '正文'
+          OUT = BOOK / '机器验证'
+          OUT.mkdir(parents=True, exist_ok=True)
+
+          WS = re.compile(r'\s+')
+          SENTENCE_END = re.compile(r'[。！？?!]+')
+          QUOTE_CONTENT = re.compile(r'[“‘]([^”’]*)[”’]|【([^】]*)】', re.S)
+          PUNCT_ONLY = re.compile(r'^[\s，。！？；：、,.!?;:\-—…（）()\[\]【】]*$')
+          CHAPTER_RE = re.compile(r'^第(\d{3})章(?:_|\.|$)')
+
+          def nw(s: str) -> str:
+              return WS.sub('', s)
+
+          def body_text(text: str) -> str:
+              lines = text.splitlines()
+              if lines and lines[0].lstrip().startswith('# '):
+                  lines = lines[1:]
+              return '\n'.join(lines)
+
+          def paragraphs(text: str) -> list[str]:
+              return [p.strip() for p in re.split(r'\n\s*\n', body_text(text)) if p.strip() and not p.strip().startswith('<!--')]
+
+          def quote_chars(p: str) -> int:
+              return sum(len(nw(m.group(1) or m.group(2) or '')) for m in QUOTE_CONTENT.finditer(p))
+
+          def outside_quote_text(p: str) -> str:
+              return QUOTE_CONTENT.sub('', p)
+
+          def is_dialogue_only(p: str) -> bool:
+              q = quote_chars(p)
+              if q == 0:
+                  return False
+              outside = nw(outside_quote_text(p))
+              return not outside or bool(PUNCT_ONLY.match(outside))
+
+          def is_dialogue_led(p: str) -> bool:
+              total = max(len(nw(p)), 1)
+              q = quote_chars(p)
+              return q > 0 and (q / total >= 0.70 or p.lstrip().startswith(('“', '‘', '【')))
+
+          def sentence_count(p: str) -> int:
+              parts = [x for x in SENTENCE_END.split(p) if nw(x)]
+              return max(len(parts), 1)
+
+          def longest_run(flags: list[bool]) -> int:
+              best = cur = 0
+              for flag in flags:
+                  cur = cur + 1 if flag else 0
+                  best = max(best, cur)
+              return best
+
+          def longest_sawtooth(ps: list[str]) -> int:
+              flags = []
+              for p in ps:
+                  short40 = len(nw(p)) <= 40
+                  one = sentence_count(p) <= 1
+                  flags.append(short40 and (one or is_dialogue_led(p)))
+              return longest_run(flags)
+
+          def git_blob_sha(path: Path) -> str:
+              return subprocess.check_output(['git', 'hash-object', str(path.relative_to(ROOT))], cwd=ROOT, text=True).strip()
+
+          files = {}
+          for p in FORMAL.glob('*.md'):
+              m = CHAPTER_RE.match(p.name)
+              if m:
+                  n = int(m.group(1))
+                  if n in files:
+                      raise SystemExit(f'duplicate chapter {n}: {files[n].name}, {p.name}')
+                  files[n] = p
+
+          expected = set(range(1, 75))
+          missing = sorted(expected - set(files))
+          extra = sorted(set(files) - expected)
+          if missing or extra:
+              raise SystemExit(f'chapter set mismatch missing={missing} extra={extra}')
+
+          def measure(n: int):
+              path = files[n]
+              text = path.read_text(encoding='utf-8')
+              body = body_text(text)
+              ps = paragraphs(text)
+              total_chars = max(len(nw(body)), 1)
+              dialog_chars = sum(quote_chars(p) for p in ps)
+              dialog_only_flags = [is_dialogue_only(p) for p in ps]
+              dialog_led_flags = [is_dialogue_led(p) for p in ps]
+              short20_flags = [len(nw(p)) <= 20 for p in ps]
+              short40_flags = [len(nw(p)) <= 40 for p in ps]
+              one_flags = [sentence_count(p) <= 1 for p in ps]
+              pc = max(len(ps), 1)
+              return {
+                  'chapter': f'CH{n:03d}',
+                  'path': str(path.relative_to(ROOT)),
+                  'blob_sha': git_blob_sha(path),
+                  'total_body_chars': len(nw(body)),
+                  'total_paragraphs': len(ps),
+                  'single_sentence_paragraph_count': sum(one_flags),
+                  'single_sentence_paragraph_ratio': round(sum(one_flags) / pc, 4),
+                  'short_paragraph_le20_count': sum(short20_flags),
+                  'short_paragraph_le20_ratio': round(sum(short20_flags) / pc, 4),
+                  'short_paragraph_le40_count': sum(short40_flags),
+                  'short_paragraph_le40_ratio': round(sum(short40_flags) / pc, 4),
+                  'dialogue_only_paragraph_count': sum(dialog_only_flags),
+                  'dialogue_only_paragraph_ratio': round(sum(dialog_only_flags) / pc, 4),
+                  'dialogue_led_paragraph_count': sum(dialog_led_flags),
+                  'dialogue_led_paragraph_ratio': round(sum(dialog_led_flags) / pc, 4),
+                  'dialogue_character_ratio': round(dialog_chars / total_chars, 4),
+                  'non_dialogue_narrative_character_ratio': round(1 - dialog_chars / total_chars, 4),
+                  'max_dialogue_only_run': longest_run(dialog_only_flags),
+                  'max_short_paragraph_le20_run': longest_run(short20_flags),
+                  'max_short_paragraph_le40_run': longest_run(short40_flags),
+                  'max_sawtooth_run': longest_sawtooth(ps),
+              }
+
+          rows = [measure(n) for n in range(1, 75)]
+          refs = rows[:10]
+
+          def ref_max(key):
+              return max(float(r[key]) for r in refs)
+
+          for row in rows:
+              hard, review = [], []
+              if row['dialogue_character_ratio'] > 0.45:
+                  hard.append('DIALOGUE_PAGE_DOMINANCE:dialogue_character_ratio>0.45')
+              if row['dialogue_only_paragraph_ratio'] > 0.55:
+                  hard.append('CHAT_LOG_PAGE_TEXTURE:dialogue_only_paragraph_ratio>0.55')
+              if row['max_dialogue_only_run'] >= 10:
+                  hard.append('SERIAL_DIALOGUE_ABSOLUTE_FAIL:max_dialogue_only_run>=10')
+              if row['short_paragraph_le20_ratio'] > 0.90 and row['single_sentence_paragraph_ratio'] > 0.60:
+                  hard.append('SAWTOOTH_SHORT_PARAGRAPH_PAGE:short20>0.90_and_one_sentence>0.60')
+              if row['max_short_paragraph_le40_run'] >= 24:
+                  hard.append('SAWTOOTH_SHORT_PARAGRAPH_PAGE:max_short40_run>=24')
+              if row['max_sawtooth_run'] >= 20:
+                  hard.append('SAWTOOTH_SHORT_PARAGRAPH_PAGE:max_sawtooth_run>=20')
+              if row['dialogue_character_ratio'] > ref_max('dialogue_character_ratio') + 0.08:
+                  review.append('REFERENCE_DRIFT:dialogue_character_ratio')
+              if row['dialogue_only_paragraph_ratio'] > ref_max('dialogue_only_paragraph_ratio') + 0.10:
+                  review.append('REFERENCE_DRIFT:dialogue_only_paragraph_ratio')
+              if row['short_paragraph_le20_ratio'] > ref_max('short_paragraph_le20_ratio') + 0.12:
+                  review.append('REFERENCE_DRIFT:short20_ratio')
+              ordinary_refs = [r for r in refs if r['chapter'] != 'CH001']
+              if row['max_dialogue_only_run'] > max(r['max_dialogue_only_run'] for r in ordinary_refs) + 2:
+                  review.append('REFERENCE_DRIFT:max_dialogue_only_run')
+              if row['max_sawtooth_run'] > ref_max('max_sawtooth_run') + 4:
+                  review.append('REFERENCE_DRIFT:max_sawtooth_run')
+              row['absolute_failures'] = hard
+              row['reference_band_review_hits'] = review
+              row['result'] = 'FAIL' if hard else ('MANDATORY_BODY_REVIEW' if review else 'PASS_NUMERIC')
+
+          absolute = [r['chapter'] for r in rows if r['absolute_failures']]
+          review = [r['chapter'] for r in rows if r['reference_band_review_hits']]
+          p0 = {
+              'gate': 'P0_DIALOGUE_VISUAL_HARD_GATE_V2',
+              'canonical_script_blob': '7c52191908b6e3939a5a4929a9a93f80fa9a4157',
+              'input_scope': {'reference_window': [1, 10], 'target_window': [1, 74]},
+              'chapters': rows,
+              'core_metrics': {
+                  'target_chapter_count': 74,
+                  'absolute_failures': absolute,
+                  'mandatory_body_review_chapters': review,
+                  'missing_metric_chapters': [],
+              },
+              'stale_blob_chapters': [],
+              'p0_manifest_result': 'FAIL' if absolute else ('MANDATORY_BODY_REVIEW' if review else 'PASS'),
+          }
+          (OUT / 'P0_DIALOGUE_VISUAL_HARD_GATE_CH001_CH074.json').write_text(json.dumps(p0, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+          lengths = [r['total_body_chars'] for r in rows]
+          ordered = sorted(lengths)
+          def percentile(p):
+              if len(ordered) == 1: return ordered[0]
+              pos = (len(ordered)-1) * p
+              lo, hi = math.floor(pos), math.ceil(pos)
+              if lo == hi: return ordered[lo]
+              return round(ordered[lo] + (ordered[hi]-ordered[lo]) * (pos-lo))
+
+          length_diag = {
+              'count_method': 'NON_WHITESPACE_BODY_CHARACTERS',
+              'chapter_count': 74,
+              'chapter_body_chars': {r['chapter']: r['total_body_chars'] for r in rows},
+              'min': min(lengths), 'p10': percentile(.10), 'p25': percentile(.25),
+              'median': round(statistics.median(lengths)), 'mean': round(statistics.mean(lengths), 2),
+              'p75': percentile(.75), 'p90': percentile(.90), 'max': max(lengths),
+              'early_10_mean': round(statistics.mean(lengths[:10]), 2),
+              'early_30_mean': round(statistics.mean(lengths[:30]), 2),
+              'latest_34_mean': round(statistics.mean(lengths[40:]), 2),
+              'contract_status': 'MISSING_NEEDS_EVIDENCE_BASED_LOCK',
+          }
+          (OUT / 'CHAPTER_LENGTH_DIAGNOSTIC_CH001_CH074.json').write_text(json.dumps(length_diag, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+          summary = {
+              'head_commit': subprocess.check_output(['git','rev-parse','HEAD'], text=True).strip(),
+              'p0_result': p0['p0_manifest_result'],
+              'absolute_failures': absolute,
+              'mandatory_body_review_chapters': review,
+              'length_summary': {k:length_diag[k] for k in ['min','p10','p25','median','mean','p75','p90','max','early_10_mean','early_30_mean','latest_34_mean']},
+              'ready_status': 'BLOCKED_UNTIL_P0_PASS_AND_LENGTH_CONTRACT_LOCKED',
+          }
+          (OUT / 'MACHINE_AUDIT_SUMMARY.json').write_text(json.dumps(summary, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          print(json.dumps(summary, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Upload machine evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: liusui-quality-audit
+          path: txt/重生六岁，我带空间抢回军区大院/机器验证/*.json
