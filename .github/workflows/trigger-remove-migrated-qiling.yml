@@ -1,9 +1,6 @@
 name: trigger-remove-migrated-qiling
 
 on:
-  push:
-    paths:
-      - '.github/workflows/trigger-remove-migrated-qiling.yml'
   workflow_dispatch:
 
 permissions:
