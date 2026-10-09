@@ -1,15 +1,7 @@
 name: Legacy Novel Quality Diagnostic
 on:
-  pull_request:
-    branches:
-      - main
-    types: [opened, synchronize, reopened]
-    paths:
-      - '.github/workflows/legacy-novel-quality-diagnostic.yml'
-      - 'quality_runtime/**'
-      - 'scripts/p0_dialogue_visual_hard_gate_v2.py'
-      - 'scripts/validate_ready_promotion_v22.py'
-      - 'quality_triggers/**'
+  workflow_dispatch:
+
 permissions:
   contents: write
   pull-requests: read
