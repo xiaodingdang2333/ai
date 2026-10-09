@@ -1,9 +1,6 @@
 name: remove-migrated-qiling-audio-appraisal
 
 on:
-  push:
-    paths:
-      - '.github/workflows/remove-migrated-qiling-audio-appraisal.yml'
   workflow_dispatch:
 
 permissions:
